@@ -9,39 +9,23 @@
       data-accordion="false"
       id="navigation"
     >
-      <li class="nav-item menu-open">
-        <a href="#" class="nav-link active">
+      
+      <li class="nav-item">
+        <a href="{{ url('/') }}" class="nav-link {{ url()->current() == url('/') ? 'active' : '' }}">
           <i class="nav-icon bi bi-speedometer"></i>
-          <p>
-            Dashboard
-            <i class="nav-arrow bi bi-chevron-right"></i>
-          </p>
+          <p>Dashboard</p>
         </a>
-        <ul class="nav nav-treeview">
-          <li class="nav-item">
-            <a href="{{ url('/') }}" class="nav-link active">
-              <i class="nav-icon bi bi-circle"></i>
-              <p>Dashboard v1</p>
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="./index2.html" class="nav-link">
-              <i class="nav-icon bi bi-circle"></i>
-              <p>Dashboard v2</p>
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="./index3.html" class="nav-link">
-              <i class="nav-icon bi bi-circle"></i>
-              <p>Dashboard v3</p>
-            </a>
-          </li>
-        </ul>
       </li>
       <li class="nav-item">
         <a href="{{ route('users.index') }}" class="nav-link {{ request()->routeIs('users.*') ? 'active' : '' }}">
           <i class="nav-icon bi bi-people-fill"></i>
           <p>Users</p>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ route('toko.index') }}" class="nav-link {{ request()->routeIs('toko.*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-shop"></i>
+          <p>Toko</p>
         </a>
       </li>
       <li class="nav-item">

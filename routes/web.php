@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\TokoController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,3 +23,8 @@ Route::get('/users', [UserController::class, 'index'])->name('users.index');
 Route::post('/users', [UserController::class, 'store'])->name('users.store');
 Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
 Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+
+Route::get('/toko', [TokoController::class, 'index'])->name('toko.index');
+Route::post('/toko', [TokoController::class, 'store'])->name('toko.store');
+Route::put('/toko/{toko}', [TokoController::class, 'update'])->name('toko.update');
+Route::delete('/toko/{toko}', [TokoController::class, 'destroy'])->name('toko.destroy');

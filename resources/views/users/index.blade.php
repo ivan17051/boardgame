@@ -6,12 +6,12 @@
   <div class="container-fluid">
     <div class="row">
       <div class="col-sm-6">
-        <h3 class="mb-0">Users</h3>
+        <h3 class="mb-0">Pengguna</h3>
       </div>
       <div class="col-sm-6">
         <ol class="breadcrumb float-sm-end">
-          <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
-          <li class="breadcrumb-item active" aria-current="page">Users</li>
+          <li class="breadcrumb-item"><a href="{{ url('/') }}">Beranda</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Pengguna</li>
         </ol>
       </div>
     </div>
@@ -22,29 +22,47 @@
 <div class="app-content">
   <div class="container-fluid">
     <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <h3 class="card-title mb-0">All users</h3>
-        <button type="button" class="btn btn-primary btn-sm" id="btn-add-user" data-bs-toggle="modal" data-bs-target="#userModal">
-          <i class="bi bi-person-plus-fill me-1"></i> Add user
-        </button>
+      <div class="card-header">
+        <div class="row">
+          <div class="col-md-6">
+            <h3 class="card-title mb-0">Semua pengguna</h3>
+          </div>
+          <div class="col-md-6 text-end">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-add-user" data-bs-toggle="modal" data-bs-target="#userModal">
+              <i class="bi bi-person-plus-fill me-1"></i> Tambah pengguna
+            </button>
+          </div>
+        </div>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
           <table class="table table-striped table-hover align-middle mb-0">
             <thead class="table-light">
               <tr>
+                <th scope="col">Nama pengguna</th>
                 <th scope="col">Username</th>
-                <th scope="col">Role</th>
-                <th scope="col">Created</th>
-                <th scope="col" class="text-end" style="width: 140px">Actions</th>
+                <th scope="col">Peran</th>
+                <th scope="col">Status</th>
+                <th scope="col">Dibuat</th>
+                <th scope="col" class="text-end" style="width: 140px">Aksi</th>
               </tr>
             </thead>
             <tbody>
               @forelse ($users as $user)
                 <tr data-user-id="{{ $user->id }}">
-                  <td class="col-name">{{ $user->username }}</td>
-                  <td class="col-email">{{ $user->role }}</td>
-                  <td class="text-secondary">{{ $user->doc }}</td>
+                  <td class="col-name">{{ $user->nama }}</td>
+                  <td class="col-username">{{ $user->username }}</td>
+                  <td class="col-role">
+                    <span class="badge {{ $user->role === 'admin' ? 'bg-primary' : 'bg-secondary' }}">
+                      {{ $user->role === 'cashier' ? 'Kasir' : ($user->role === 'admin' ? 'Admin' : $user->role) }}
+                    </span>
+                  </td>
+                  <td class="col-status">
+                    <span class="badge {{ $user->is_active == 1 ? 'bg-success' : 'bg-danger' }}">
+                      {{ $user->is_active == 1 ? 'Aktif' : 'Nonaktif' }}
+                    </span>
+                  </td>
+                  <td class="col-created-at">{{ $user->doc }}</td>
                   <td class="text-end">
                     <button
                       type="button"
@@ -52,9 +70,9 @@
                       data-bs-toggle="modal"
                       data-bs-target="#userModal"
                       data-user-id="{{ $user->id }}"
-                      data-name="{{ $user->username }}"
-                      data-email="{{ $user->role }}"
-                      title="Edit"
+                      data-username="{{ $user->username }}"
+                      data-role="{{ $user->role }}"
+                      title="Ubah"
                     >
                       <i class="bi bi-pencil"></i>
                     </button>
@@ -65,7 +83,7 @@
                       data-bs-target="#deleteUserModal"
                       data-user-id="{{ $user->id }}"
                       data-name="{{ $user->username }}"
-                      title="Delete"
+                      title="Hapus"
                     >
                       <i class="bi bi-trash"></i>
                     </button>
@@ -73,7 +91,7 @@
                 </tr>
               @empty
                 <tr>
-                  <td colspan="4" class="text-center text-secondary py-4">No users yet.</td>
+                  <td colspan="4" class="text-center text-secondary py-4">Belum ada pengguna.</td>
                 </tr>
               @endforelse
             </tbody>
@@ -84,59 +102,63 @@
   </div>
 </div>
 
-<!-- Create / Edit Modal -->
+<!-- Modal tambah / ubah -->
 <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="userModalLabel">Add user</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="userModalLabel">Tambah pengguna</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <form id="userForm" novalidate action="{{ route('users.store') }}" method="POST">
         <div class="modal-body">
           <div id="userFormAlert" class="alert alert-danger d-none" role="alert"></div>
           <input type="hidden" id="user_id" name="user_id" value="" />
           <div class="mb-3">
-            <label for="user_name" class="form-label">Name</label>
+            <label for="user_name" class="form-label">Nama</label>
             <input type="text" class="form-control" id="user_name" name="name" required autocomplete="name" />
           </div>
           <div class="mb-3">
-            <label for="user_email" class="form-label">Role</label>
-            <input type="text" class="form-control" id="user_role" name="role" required autocomplete="role" />
+            <label for="user_role" class="form-label">Peran</label>
+            <select class="form-select" id="user_role" name="role" required>
+              <option value="">Pilih peran</option>
+              <option value="admin">Admin</option>
+              <option value="cashier">Kasir</option>
+            </select>
           </div>
           <div class="mb-3">
-            <label for="user_password" class="form-label">Password</label>
+            <label for="user_password" class="form-label">Kata sandi</label>
             <input type="password" class="form-control" id="user_password" name="password" autocomplete="new-password" />
-            <div class="form-text" id="passwordHelp">Required for new users. Leave blank when editing to keep the current password.</div>
+            <div class="form-text" id="passwordHelp">Wajib untuk pengguna baru. Kosongkan saat mengubah untuk mempertahankan kata sandi saat ini.</div>
           </div>
           <div class="mb-0">
-            <label for="user_password_confirmation" class="form-label">Confirm password</label>
+            <label for="user_password_confirmation" class="form-label">Konfirmasi kata sandi</label>
             <input type="password" class="form-control" id="user_password_confirmation" name="password_confirmation" autocomplete="new-password" />
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="userFormSubmit">Save</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary" id="userFormSubmit">Simpan</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<!-- Delete confirmation -->
+<!-- Konfirmasi hapus -->
 <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="deleteUserModalLabel">Delete user</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="deleteUserModalLabel">Hapus pengguna</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <div class="modal-body">
-        <p class="mb-0">Delete <strong id="deleteUserName"></strong>? This cannot be undone.</p>
+        <p class="mb-0">Hapus <strong id="deleteUserName"></strong>? Tindakan ini tidak dapat dibatalkan.</p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteUser">Delete</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteUser">Hapus</button>
       </div>
     </div>
   </div>
@@ -146,6 +168,7 @@
 @push('scripts')
 <script>
 (function () {
+  const TOAST_STORAGE_KEY = 'users.index.toast';
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   const routes = {
     store: @json(route('users.store')),
@@ -169,6 +192,56 @@
   const confirmDeleteBtn = document.getElementById('confirmDeleteUser');
 
   let deleteTargetId = null;
+
+  function getToastContainer() {
+    let container = document.getElementById('toastContainer');
+    if (container) return container;
+
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container position-fixed top-0 end-0 p-3';
+    container.style.zIndex = '1090';
+    document.body.appendChild(container);
+    return container;
+  }
+
+  function showToast(message, variant = 'success') {
+    if (!message) return;
+    const container = getToastContainer();
+    const toneClass = variant === 'danger' ? 'text-bg-danger' : 'text-bg-success';
+    const toastEl = document.createElement('div');
+    toastEl.className = `toast align-items-center border-0 ${toneClass}`;
+    toastEl.setAttribute('role', 'alert');
+    toastEl.setAttribute('aria-live', 'assertive');
+    toastEl.setAttribute('aria-atomic', 'true');
+    toastEl.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Tutup"></button>
+      </div>
+    `;
+
+    container.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+    toast.show();
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove(), { once: true });
+  }
+
+  function saveToastForReload(message, variant = 'success') {
+    sessionStorage.setItem(TOAST_STORAGE_KEY, JSON.stringify({ message, variant }));
+  }
+
+  function showSavedToast() {
+    const raw = sessionStorage.getItem(TOAST_STORAGE_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(TOAST_STORAGE_KEY);
+    try {
+      const payload = JSON.parse(raw);
+      showToast(payload.message, payload.variant);
+    } catch (_) {
+      // Ignore invalid JSON from stale storage.
+    }
+  }
 
   function clearAlert() {
     if (!alertEl) return;
@@ -200,28 +273,28 @@
 
   document.getElementById('btn-add-user')?.addEventListener('click', () => {
     resetUserForm();
-    titleEl.textContent = 'Add user';
+    titleEl.textContent = 'Tambah pengguna';
     passwordInput.setAttribute('required', 'required');
     passwordConfirmInput.setAttribute('required', 'required');
-    passwordHelp.textContent = 'Minimum 8 characters.';
+    passwordHelp.textContent = 'Minimal 8 karakter.';
   });
 
   document.querySelectorAll('.btn-edit-user').forEach((btn) => {
     btn.addEventListener('click', () => {
       resetUserForm();
-      titleEl.textContent = 'Edit user';
+      titleEl.textContent = 'Ubah pengguna';
       userIdInput.value = btn.dataset.userId || '';
-      document.getElementById('user_name').value = btn.dataset.name || '';
-      document.getElementById('user_email').value = btn.dataset.email || '';
+      document.getElementById('user_name').value = btn.dataset.username || '';
+      document.getElementById('user_role').value = btn.dataset.role || '';
       passwordInput.removeAttribute('required');
       passwordConfirmInput.removeAttribute('required');
-      passwordHelp.textContent = 'Leave blank to keep the current password.';
+      passwordHelp.textContent = 'Kosongkan untuk mempertahankan kata sandi saat ini.';
     });
   });
 
   userModalEl?.addEventListener('hidden.bs.modal', () => {
     resetUserForm();
-    titleEl.textContent = 'Add user';
+    titleEl.textContent = 'Tambah pengguna';
   });
 
   document.querySelectorAll('.btn-delete-user').forEach((btn) => {
@@ -245,10 +318,11 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(data.message || 'Could not delete user.');
+        showToast(data.message || 'Gagal menghapus pengguna.', 'danger');
         return;
       }
       deleteModal?.hide();
+      saveToastForReload(data.message || 'Pengguna dihapus.');
       window.location.reload();
     } finally {
       confirmDeleteBtn.disabled = false;
@@ -265,8 +339,8 @@
     const method = isEdit ? 'PUT' : 'POST';
 
     const body = {
-      name: document.getElementById('user_name').value.trim(),
-      email: document.getElementById('user_email').value.trim(),
+      username: document.getElementById('user_name').value.trim(),
+      role: document.getElementById('user_role').value.trim(),
     };
 
     const pwd = passwordInput.value;
@@ -298,16 +372,19 @@
       }
 
       if (!res.ok) {
-        showAlert(data.message || 'Something went wrong.');
+        showToast(data.message || 'Terjadi kesalahan.', 'danger');
         return;
       }
 
       userModal?.hide();
+      saveToastForReload(data.message || (isEdit ? 'Pengguna diperbarui.' : 'Pengguna ditambahkan.'));
       window.location.reload();
     } finally {
       submitBtn.disabled = false;
     }
   });
+
+  showSavedToast();
 })();
 </script>
 @endpush
