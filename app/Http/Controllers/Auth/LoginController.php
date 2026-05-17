@@ -16,10 +16,16 @@ class LoginController extends Controller
 
     public function store(Request $request)
     {
-        $credentials = $request->validate([
-            'username' => ['required', 'string', 'max:255'],
-            'password' => ['required', 'string'],
-        ]);
+        $credentials = $request->validate(
+            [
+                'username' => ['required', 'string', 'max:255'],
+                'password' => ['required', 'string'],
+            ],
+            [
+                'username.required' => 'Username wajib diisi.',
+                'password.required' => 'Password wajib diisi.',
+            ]
+        );
 
         $remember = $request->boolean('remember');
 
@@ -37,7 +43,7 @@ class LoginController extends Controller
         }
 
         throw ValidationException::withMessages([
-            'username' => [__('These credentials do not match our records.')],
+            'username' => ['Username atau password salah, atau akun tidak aktif.'],
         ]);
     }
 

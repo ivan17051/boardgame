@@ -143,7 +143,7 @@
         <h5 class="modal-title" id="checkinModalLabel">Mulai sewa baru</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
-      <form id="checkinForm" novalidate>
+      <form id="checkinForm" novalidate data-no-page-loader>
         <div class="modal-body">
           <div id="checkinAlert" class="alert alert-danger d-none" role="alert"></div>
           <div class="mb-3">
@@ -275,18 +275,23 @@
         })
         .then(function (r) {
           if (r.ok) {
+            AppToast.saveForReload((r.body && r.body.message) ? r.body.message : 'Sewa dimulai.');
             window.location.reload();
             return;
           }
           if (r.status === 422 && r.body && r.body.errors) {
             const first = Object.values(r.body.errors)[0];
-            showCheckinError(Array.isArray(first) ? first[0] : String(first));
+            const msg = Array.isArray(first) ? first[0] : String(first);
+            showCheckinError(msg);
             return;
           }
-          showCheckinError(r.body && r.body.message ? r.body.message : 'Gagal menyimpan.');
+          const errMsg = r.body && r.body.message ? r.body.message : 'Gagal menyimpan.';
+          showCheckinError(errMsg);
+          AppToast.show(errMsg, 'danger');
         })
         .catch(function () {
           showCheckinError('Jaringan bermasalah.');
+          AppToast.show('Jaringan bermasalah.', 'danger');
         });
     });
   }
@@ -311,6 +316,7 @@
         .then(function (r) {
           if (!r.ok) {
             checkoutSummary.innerHTML = '<p class="text-danger mb-0">Gagal memuat rincian.</p>';
+            AppToast.show('Gagal memuat rincian checkout.', 'danger');
             return;
           }
           const d = r.body;
@@ -328,6 +334,7 @@
         })
         .catch(function () {
           checkoutSummary.innerHTML = '<p class="text-danger mb-0">Jaringan bermasalah.</p>';
+          AppToast.show('Jaringan bermasalah.', 'danger');
         });
     });
   });
@@ -358,15 +365,17 @@
         .then(function (r) {
           if (r.ok) {
             if (checkoutModal) checkoutModal.hide();
+            AppToast.saveForReload((r.body && r.body.message) ? r.body.message : 'Sewa selesai.');
             window.location.reload();
             return;
           }
           checkoutConfirmBtn.disabled = false;
-          alert((r.body && r.body.message) || 'Checkout gagal.');
+          const err = (r.body && r.body.message) || 'Checkout gagal.';
+          AppToast.show(err, 'danger');
         })
         .catch(function () {
           checkoutConfirmBtn.disabled = false;
-          alert('Jaringan bermasalah.');
+          AppToast.show('Jaringan bermasalah.', 'danger');
         });
     });
   }

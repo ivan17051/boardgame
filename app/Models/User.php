@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Toko;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -26,6 +27,7 @@ class User extends Authenticatable
         'username',
         'password',
         'role',
+        'id_toko',
         'remember_token',
         'is_active',
         'doc',
@@ -49,7 +51,18 @@ class User extends Authenticatable
      */
     protected $casts = [
         'is_active' => 'boolean',
+        'id_toko' => 'integer',
         'doc' => 'datetime',
         'dom' => 'datetime',
     ];
+
+    public function toko(): BelongsTo
+    {
+        return $this->belongsTo(Toko::class, 'id_toko');
+    }
+
+    public function canSeeAllTokos(): bool
+    {
+        return (int) $this->id_toko === 0;
+    }
 }

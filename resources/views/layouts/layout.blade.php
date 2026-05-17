@@ -3,7 +3,7 @@
   <!--begin::Head-->
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-    <title>AdminLTE v4 | Dashboard</title>
+    <title>Omahjong</title>
 
     <!--begin::Accessibility Meta Tags-->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
@@ -13,16 +13,8 @@
     <!--end::Accessibility Meta Tags-->
 
     <!--begin::Primary Meta Tags-->
-    <meta name="title" content="AdminLTE v4 | Dashboard" />
-    <meta name="author" content="ColorlibHQ" />
-    <meta
-      name="description"
-      content="AdminLTE is a Free Bootstrap 5 Admin Dashboard, 30 example pages using Vanilla JS. Fully accessible with WCAG 2.1 AA compliance."
-    />
-    <meta
-      name="keywords"
-      content="bootstrap 5, bootstrap, bootstrap 5 admin dashboard, bootstrap 5 dashboard, bootstrap 5 charts, bootstrap 5 calendar, bootstrap 5 datepicker, bootstrap 5 tables, bootstrap 5 datatable, vanilla js datatable, colorlibhq, colorlibhq dashboard, colorlibhq admin dashboard, accessible admin panel, WCAG compliant"
-    />
+    <meta name="title" content="Omahjong" />
+    <meta name="author" content="Omahjong" />
     <!--end::Primary Meta Tags-->
 
     <!--begin::Accessibility Features-->
@@ -62,6 +54,7 @@
     <!--begin::Required Plugin(AdminLTE)-->
     <link rel="stylesheet" href="{{ asset('public/css/adminlte.css') }}" />
     <!--end::Required Plugin(AdminLTE)-->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" crossorigin="anonymous" />
 
     <!-- apexcharts -->
     <link
@@ -82,6 +75,7 @@
   <!--end::Head-->
   <!--begin::Body-->
   <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
+    @include('layouts.partials.page-loader')
     <!--begin::App Wrapper-->
     <div class="app-wrapper">
       <!--begin::Header-->
@@ -121,19 +115,19 @@
             <li class="nav-item dropdown user-menu">
               <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
                 <img
-                  src="{{ asset('public/assets/img/user2-160x160.jpg') }}"
+                  src="{{ asset('public/assets/img/icon.png') }}"
                   class="user-image rounded-circle shadow"
-                  alt="User Image"
+                  alt="Icon Omahjong"
                 />
                 <span class="d-none d-md-inline">{{ Auth::user()->nama ?? Auth::user()->username }}</span>
               </a>
               <ul class="dropdown-menu dropdown-menu-lg dropdown-menu-end">
                 <!--begin::User Image-->
-                <li class="user-header text-bg-primary">
+                <li class="user-header text-bg-light">
                   <img
-                    src="{{ asset('public/assets/img/user2-160x160.jpg') }}"
+                    src="{{ asset('public/assets/img/icon.png') }}"
                     class="rounded-circle shadow"
-                    alt="User Image"
+                    alt="Icon Omahjong"
                   />
                   <p>
                     {{ Auth::user()->nama ?? Auth::user()->username }}
@@ -142,8 +136,8 @@
                 </li>
                 <!--end::User Image-->
                 <!--begin::Menu Body-->
-                <li class="user-body">
-                  <!--begin::Row-->
+                <!-- <li class="user-body">
+                  
                   <div class="row">
                     <div class="col-4 text-center">
                       <a href="#">Followers</a>
@@ -155,15 +149,15 @@
                       <a href="#">Friends</a>
                     </div>
                   </div>
-                  <!--end::Row-->
-                </li>
+                  
+                </li> -->
                 <!--end::Menu Body-->
                 <!--begin::Menu Footer-->
                 <li class="user-footer">
-                  <a href="#" class="btn btn-outline-secondary">Profile</a>
-                  <form method="post" action="{{ route('logout') }}" class="d-inline float-end">
+                  <!-- <a href="#" class="btn btn-outline-secondary">Profile</a> -->
+                  <form method="post" action="{{ route('logout') }}" class="w-100">
                     @csrf
-                    <button type="submit" class="btn btn-outline-danger">Keluar</button>
+                    <button type="submit" class="btn btn-outline-danger w-100">Keluar</button>
                   </form>
                 </li>
                 <!--end::Menu Footer-->
@@ -185,7 +179,7 @@
             <!--begin::Brand Image-->
             <img
               src="{{ asset('public/assets/img/logo.png') }}"
-              alt="AdminLTE Logo"
+              alt="Logo Omahjong"
               class="brand-image opacity-75 shadow"
             />
             <!--end::Brand Image-->
@@ -239,7 +233,9 @@
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.min.js"
       crossorigin="anonymous"
     ></script>
-    <!--end::Required Plugin(Bootstrap 5)--><!--begin::Required Plugin(AdminLTE)-->
+    <!--end::Required Plugin(Bootstrap 5)-->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" crossorigin="anonymous"></script>
+    <!--begin::Required Plugin(AdminLTE)-->
     <script src="{{ asset('public/js/adminlte.js') }}"></script>
     <!--end::Required Plugin(AdminLTE)--><!--begin::OverlayScrollbars Configure-->
     <script>
@@ -465,6 +461,8 @@
       const sparkline3 = new ApexCharts(document.querySelector('#sparkline-3'), option_sparkline3);
       sparkline3.render();
     </script>
+    @include('layouts.partials.session-expired')
+    @include('layouts.partials.app-toast')
     @stack('scripts')
     <!--end::Script-->
   </body>

@@ -19,12 +19,16 @@
 
 <div class="app-content">
   <div class="container-fluid">
+  <div class="callout callout-warning mb-4">
+      <h5 class="fw-bold">Catatan!</h5>
+      <p>
+        Pendapatan dari sewa meja masuk otomatis setelah checkout. Klik <strong>Lengkapi</strong> untuk mengisi metode pembayaran dan bukti transaksi.
+      </p>
+    </div>
+    
     <div class="card">
       <div class="card-header">
         <h3 class="card-title mb-0">Riwayat pemasukan</h3>
-        <p class="text-secondary small mb-0 mt-1">
-          Pendapatan dari sewa meja masuk otomatis setelah checkout. Klik <strong>Lengkapi</strong> untuk mengisi metode pembayaran dan bukti transaksi.
-        </p>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -84,15 +88,29 @@
                   </td>
                   <td class="text-end col-aksi">
                     @if ($row->tipe_transaksi == 'income')
-                      <button
-                        type="button"
-                        class="btn btn-outline-primary btn-sm btn-open-kelengkapan"
-                        data-bs-toggle="modal"
-                        data-bs-target="#kelengkapanModal"
-                        title="Lengkapi pembayaran"
-                      >
-                        <i class="bi bi-pencil-square"></i>
-                      </button>
+                      <div class="btn-group" role="group" aria-label="Aksi arus kas">
+                        <button
+                          type="button"
+                          class="btn btn-outline-primary btn-sm btn-open-kelengkapan"
+                          data-bs-toggle="modal"
+                          data-bs-target="#kelengkapanModal"
+                          title="Lengkapi pembayaran"
+                        >
+                          <i class="bi bi-pencil-square"></i>
+                        </button>
+                        @if ($status === 'lengkap')
+                          <a
+                            href="{{ route('cashflow.invoice', $row) }}"
+                            class="btn btn-outline-secondary btn-sm"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-no-page-loader
+                            title="Cetak kuitansi"
+                          >
+                            <i class="bi bi-printer"></i>
+                          </a>
+                        @endif
+                      </div>
                     @else
                       <span class="text-secondary">—</span>
                     @endif
@@ -222,7 +240,6 @@
       buktiExistingEl.innerHTML = '<p class="small text-secondary mb-0">Belum ada bukti diunggah.</p>';
       return;
     }
-    console.log(url);
     buktiExistingEl.innerHTML =
       '<a href="' + 
       url.replace(/"/g, '&quot;') +
@@ -294,6 +311,9 @@
       if (!id) return;
       if (!metode) {
         showAlert('Pilih metode pembayaran.');
+        if (typeof AppToast !== 'undefined') {
+          AppToast.show('Pilih metode pembayaran.', 'warning');
+        }
         return;
       }
 
@@ -351,9 +371,17 @@
             updateRowFromResponse(activeRow, lastBody);
           }
           if (modal) modal.hide();
+          var msg = lastBody && lastBody.message ? lastBody.message : 'Data pembayaran tersimpan.';
+          if (typeof AppToast !== 'undefined') {
+            AppToast.show(msg, 'success');
+          }
         })
         .catch(function (err) {
-          showAlert(err.message || 'Terjadi kesalahan.');
+          var errMsg = err.message || 'Terjadi kesalahan.';
+          showAlert(errMsg);
+          if (typeof AppToast !== 'undefined') {
+            AppToast.show(errMsg, 'danger');
+          }
         })
         .finally(function () {
           saveBtn.disabled = false;

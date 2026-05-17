@@ -6,6 +6,8 @@ use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
 use App\Models\Toko;
+use App\Support\RentalCheckout;
+use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +17,7 @@ class RentalController extends Controller
 {
     public function index()
     {
-        $tokos = Toko::query()
+        $tokos = TokoScope::scopeTokos(Toko::query())
             ->with([
                 'meja' => function ($q) {
                     $q->orderBy('nama')->with('activeRental');
@@ -24,7 +26,7 @@ class RentalController extends Controller
             ->orderBy('nama')
             ->get();
 
-        $mejasAvailable = Meja::query()
+        $mejasAvailable = TokoScope::scopeMejas(Meja::query())
             ->with('toko')
             ->where('status', 'active')
             ->orderBy('id_toko')
@@ -54,6 +56,8 @@ class RentalController extends Controller
                 ]);
             }
 
+            TokoScope::authorizeMeja($meja);
+
             $now = now();
 
             Rental::query()->create([
@@ -81,9 +85,11 @@ class RentalController extends Controller
             abort(404);
         }
 
+        TokoScope::authorizeRental($rental);
+
         $rental->loadMissing('meja.toko');
 
-        $calc = $this->computeCheckoutTotals($rental);
+        $calc = RentalCheckout::computeTotals($rental);
 
         return response()->json([
             'rental_id' => $rental->id,
@@ -107,6 +113,8 @@ class RentalController extends Controller
             abort(404);
         }
 
+        TokoScope::authorizeRental($rental);
+
         DB::transaction(function () use ($rental) {
             $locked = Rental::query()
                 ->whereKey($rental->id)
@@ -118,7 +126,7 @@ class RentalController extends Controller
                 abort(404);
             }
 
-            $calc = $this->computeCheckoutTotals($locked);
+            $calc = RentalCheckout::computeTotals($locked);
             $now = now();
 
             $locked->update([
@@ -159,35 +167,4 @@ class RentalController extends Controller
         return response()->json(['message' => 'Sewa selesai. Meja dikembalikan ke aktif.']);
     }
 
-    /**
-     * @return array{total_minutes: float, total_harga: float, breakdown_html: string}
-     */
-    private function computeCheckoutTotals(Rental $rental): array
-    {
-        $start = $rental->waktu_start;
-        $now = now();
-        $totalSeconds = max(0, $now->getTimestamp() - $start->getTimestamp());
-        $totalMinutes = $totalSeconds / 60;
-        $hargaPerJam = (float) $rental->harga;
-        $totalHarga = ($totalMinutes / 60) * $hargaPerJam;
-
-        $menitStr = number_format($totalMinutes, 2, ',', '.');
-        $hargaStr = number_format($hargaPerJam, 3, ',', '.');
-        $totalStr = number_format($totalHarga, 3, ',', '.');
-
-        $jamDecimal = number_format($totalMinutes / 60, 4, ',', '.');
-        $breakdownHtml = '<ul class="mb-0 ps-3">'
-            . '<li><strong>Total durasi</strong>: '.$menitStr.' menit (dari mulai hingga sekarang)</li>'
-            . '<li><strong>Tarif meja</strong>: Rp '.$hargaStr.' / jam</li>'
-            . '<li><strong>Rumus</strong>: (total durasi menit ÷ 60) × tarif per jam = ('.$menitStr.' ÷ 60) × '.$hargaStr.'</li>'
-            . '<li><strong>Jam pemakaian setara</strong>: '.$jamDecimal.' jam</li>'
-            . '<li class="mt-2"><strong>Total tagihan</strong>: <span class="text-primary">Rp '.$totalStr.'</span></li>'
-            . '</ul>';
-
-        return [
-            'total_minutes' => round($totalMinutes, 2),
-            'total_harga' => round($totalHarga, 3),
-            'breakdown_html' => $breakdownHtml,
-        ];
-    }
 }

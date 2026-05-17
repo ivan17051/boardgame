@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Meja;
 use App\Models\Toko;
+use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +14,7 @@ class TokoController extends Controller
 {
     public function index()
     {
-        $tokos = Toko::query()
+        $tokos = TokoScope::scopeTokos(Toko::query())
             ->with(['meja' => fn ($q) => $q->orderBy('id')])
             ->orderBy('nama')
             ->get();
@@ -23,6 +24,10 @@ class TokoController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if (! TokoScope::canSeeAll()) {
+            abort(403);
+        }
+
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'alamat' => ['nullable', 'string'],
@@ -68,6 +73,8 @@ class TokoController extends Controller
 
     public function update(Request $request, Toko $toko): JsonResponse
     {
+        TokoScope::authorizeToko($toko);
+
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'alamat' => ['nullable', 'string'],
@@ -115,6 +122,12 @@ class TokoController extends Controller
 
     public function destroy(Toko $toko): JsonResponse
     {
+        TokoScope::authorizeToko($toko);
+
+        if (! TokoScope::canSeeAll()) {
+            abort(403);
+        }
+
         $toko->delete();
 
         return response()->json(['message' => 'Toko dihapus.']);

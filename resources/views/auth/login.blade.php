@@ -56,6 +56,7 @@
   <!--end::Head-->
   <!--begin::Body-->
   <body class="login-page bg-body-secondary">
+    @include('layouts.partials.page-loader')
     <div class="login-box">
       <div class="card card-outline card-primary">
         <div class="card-header">
@@ -71,6 +72,25 @@
         </div>
         <div class="card-body login-card-body">
           <p class="login-box-msg">Masuk untuk memulai</p>
+
+          @if ($errors->any())
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <strong class="d-block mb-1">Gagal masuk</strong>
+              <ul class="mb-0 ps-3 small">
+                @foreach ($errors->all() as $error)
+                  <li>{{ $error }}</li>
+                @endforeach
+              </ul>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
+            </div>
+          @endif
+
+          @if (session('status'))
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              {{ session('status') }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Tutup"></button>
+            </div>
+          @endif
 
           <form action="{{ route('login.store') }}" method="post" novalidate>
             @csrf
@@ -143,6 +163,12 @@
             </div>
             <!--end::Row-->
           </form>
+
+          <p class="text-center mt-3 mb-0">
+            <a href="{{ route('guest.rental.index') }}" class="small text-secondary">
+              <i class="bi bi-play-circle me-1"></i>Sewa meja mandiri (tamu)
+            </a>
+          </p>
 
           <!-- <div class="social-auth-links text-center mb-3 d-grid gap-2">
             <p>- ATAU -</p>

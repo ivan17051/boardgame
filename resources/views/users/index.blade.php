@@ -42,6 +42,7 @@
                 <th scope="col">Nama pengguna</th>
                 <th scope="col">Username</th>
                 <th scope="col">Peran</th>
+                <th scope="col">Toko</th>
                 <th scope="col">Status</th>
                 <th scope="col">Dibuat</th>
                 <th scope="col" class="text-end" style="width: 140px">Aksi</th>
@@ -57,6 +58,15 @@
                       {{ $user->role === 'cashier' ? 'Kasir' : ($user->role === 'admin' ? 'Admin' : $user->role) }}
                     </span>
                   </td>
+                  <td class="col-toko">
+                    @if ((int) $user->id_toko === 0)
+                      <span class="badge text-bg-light">Semua toko</span>
+                    @elseif ($user->toko)
+                      <span class="badge text-bg-primary">{{ $user->toko->nama }}</span>
+                    @else
+                      <span class="badge text-bg-secondary">Toko #{{ $user->id_toko }}</span>
+                    @endif
+                  </td>
                   <td class="col-status">
                     <span class="badge {{ $user->is_active == 1 ? 'bg-success' : 'bg-danger' }}">
                       {{ $user->is_active == 1 ? 'Aktif' : 'Nonaktif' }}
@@ -70,8 +80,11 @@
                       data-bs-toggle="modal"
                       data-bs-target="#userModal"
                       data-user-id="{{ $user->id }}"
+                      data-nama="{{ $user->nama }}"
                       data-username="{{ $user->username }}"
                       data-role="{{ $user->role }}"
+                      data-id-toko="{{ $user->id_toko }}"
+                      data-is-active="{{ $user->is_active ? '1' : '0' }}"
                       title="Ubah"
                     >
                       <i class="bi bi-pencil"></i>
@@ -91,7 +104,7 @@
                 </tr>
               @empty
                 <tr>
-                  <td colspan="4" class="text-center text-secondary py-4">Belum ada pengguna.</td>
+                  <td colspan="7" class="text-center text-secondary py-4">Belum ada pengguna.</td>
                 </tr>
               @endforelse
             </tbody>
@@ -110,15 +123,20 @@
         <h5 class="modal-title" id="userModalLabel">Tambah pengguna</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
-      <form id="userForm" novalidate action="{{ route('users.store') }}" method="POST">
+      <form id="userForm" novalidate action="{{ route('users.store') }}" method="POST" data-no-page-loader>
         <div class="modal-body">
           <div id="userFormAlert" class="alert alert-danger d-none" role="alert"></div>
           <input type="hidden" id="user_id" name="user_id" value="" />
-          <div class="mb-3">
+          <div class="row">
+          <div class="col-md-12 mb-3">
             <label for="user_name" class="form-label">Nama</label>
             <input type="text" class="form-control" id="user_name" name="name" required autocomplete="name" />
           </div>
-          <div class="mb-3">
+          <div class="col-md-12 mb-3">
+            <label for="user_username" class="form-label">Username</label>
+            <input type="text" class="form-control" id="user_username" name="username" required autocomplete="username" />
+          </div>
+          <div class="col-md-4 mb-3">
             <label for="user_role" class="form-label">Peran</label>
             <select class="form-select" id="user_role" name="role" required>
               <option value="">Pilih peran</option>
@@ -126,6 +144,35 @@
               <option value="cashier">Kasir</option>
             </select>
           </div>
+          <div class="col-md-8 mb-3">
+            <label for="user_id_toko" class="form-label">Toko</label>
+            <select class="form-select" id="user_id_toko" name="id_toko" required @if(!$canAssignAnyToko) disabled @endif>
+              @if ($canAssignAnyToko)
+                <option value="0">Semua toko (akses penuh)</option>
+                @foreach ($tokos as $toko)
+                  <option value="{{ $toko->id }}">{{ $toko->nama }}</option>
+                @endforeach
+              @else
+                @php $myToko = $tokos->firstWhere('id', auth()->user()->id_toko); @endphp
+                <option value="{{ auth()->user()->id_toko }}" selected>{{ $myToko ? $myToko->nama : 'Toko #'.auth()->user()->id_toko }}</option>
+              @endif
+            </select>
+            @if ($canAssignAnyToko)
+              <div class="form-text">Pilih <strong>Semua toko</strong> untuk akses seluruh data.</div>
+            @else
+              <input type="hidden" id="user_id_toko_hidden" value="{{ auth()->user()->id_toko }}" />
+            @endif
+          </div>
+          <div class="col-md-12 mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="user_is_active" name="is_active" value="1" checked />
+              <label class="form-check-label" for="user_is_active">Akun aktif</label>
+            </div>
+            <div class="form-text">Centang untuk mengaktifkan pengguna. Jika tidak dicentang, pengguna tidak dapat masuk ke sistem.</div>
+          </div>
+          </div>
+          
+          
           <div class="mb-3">
             <label for="user_password" class="form-label">Kata sandi</label>
             <input type="password" class="form-control" id="user_password" name="password" autocomplete="new-password" />
@@ -168,7 +215,6 @@
 @push('scripts')
 <script>
 (function () {
-  const TOAST_STORAGE_KEY = 'users.index.toast';
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   const routes = {
     store: @json(route('users.store')),
@@ -188,60 +234,14 @@
   const passwordInput = document.getElementById('user_password');
   const passwordConfirmInput = document.getElementById('user_password_confirmation');
   const passwordHelp = document.getElementById('passwordHelp');
+  const usernameInput = document.getElementById('user_username');
+  const idTokoSelect = document.getElementById('user_id_toko');
+  const idTokoHidden = document.getElementById('user_id_toko_hidden');
+  const isActiveInput = document.getElementById('user_is_active');
   const deleteNameEl = document.getElementById('deleteUserName');
   const confirmDeleteBtn = document.getElementById('confirmDeleteUser');
 
   let deleteTargetId = null;
-
-  function getToastContainer() {
-    let container = document.getElementById('toastContainer');
-    if (container) return container;
-
-    container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.className = 'toast-container position-fixed top-0 end-0 p-3';
-    container.style.zIndex = '1090';
-    document.body.appendChild(container);
-    return container;
-  }
-
-  function showToast(message, variant = 'success') {
-    if (!message) return;
-    const container = getToastContainer();
-    const toneClass = variant === 'danger' ? 'text-bg-danger' : 'text-bg-success';
-    const toastEl = document.createElement('div');
-    toastEl.className = `toast align-items-center border-0 ${toneClass}`;
-    toastEl.setAttribute('role', 'alert');
-    toastEl.setAttribute('aria-live', 'assertive');
-    toastEl.setAttribute('aria-atomic', 'true');
-    toastEl.innerHTML = `
-      <div class="d-flex">
-        <div class="toast-body">${message}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Tutup"></button>
-      </div>
-    `;
-
-    container.appendChild(toastEl);
-    const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-    toast.show();
-    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove(), { once: true });
-  }
-
-  function saveToastForReload(message, variant = 'success') {
-    sessionStorage.setItem(TOAST_STORAGE_KEY, JSON.stringify({ message, variant }));
-  }
-
-  function showSavedToast() {
-    const raw = sessionStorage.getItem(TOAST_STORAGE_KEY);
-    if (!raw) return;
-    sessionStorage.removeItem(TOAST_STORAGE_KEY);
-    try {
-      const payload = JSON.parse(raw);
-      showToast(payload.message, payload.variant);
-    } catch (_) {
-      // Ignore invalid JSON from stale storage.
-    }
-  }
 
   function clearAlert() {
     if (!alertEl) return;
@@ -266,6 +266,7 @@
   function resetUserForm() {
     form.reset();
     userIdInput.value = '';
+    if (isActiveInput) isActiveInput.checked = true;
     passwordInput.removeAttribute('required');
     passwordConfirmInput.removeAttribute('required');
     clearAlert();
@@ -284,8 +285,11 @@
       resetUserForm();
       titleEl.textContent = 'Ubah pengguna';
       userIdInput.value = btn.dataset.userId || '';
-      document.getElementById('user_name').value = btn.dataset.username || '';
+      document.getElementById('user_name').value = btn.dataset.nama || '';
+      if (usernameInput) usernameInput.value = btn.dataset.username || '';
       document.getElementById('user_role').value = btn.dataset.role || '';
+      if (idTokoSelect) idTokoSelect.value = btn.dataset.idToko ?? '';
+      if (isActiveInput) isActiveInput.checked = btn.dataset.isActive === '1';
       passwordInput.removeAttribute('required');
       passwordConfirmInput.removeAttribute('required');
       passwordHelp.textContent = 'Kosongkan untuk mempertahankan kata sandi saat ini.';
@@ -318,11 +322,11 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast(data.message || 'Gagal menghapus pengguna.', 'danger');
+        AppToast.show(data.message || 'Gagal menghapus pengguna.', 'danger');
         return;
       }
       deleteModal?.hide();
-      saveToastForReload(data.message || 'Pengguna dihapus.');
+      AppToast.saveForReload(data.message || 'Pengguna dihapus.');
       window.location.reload();
     } finally {
       confirmDeleteBtn.disabled = false;
@@ -338,9 +342,16 @@
     const url = isEdit ? routes.update(id) : routes.store;
     const method = isEdit ? 'PUT' : 'POST';
 
+    const idTokoVal = idTokoHidden
+      ? idTokoHidden.value
+      : (idTokoSelect ? idTokoSelect.value : '0');
+
     const body = {
-      username: document.getElementById('user_name').value.trim(),
+      nama: document.getElementById('user_name').value.trim(),
+      username: usernameInput ? usernameInput.value.trim() : document.getElementById('user_name').value.trim(),
       role: document.getElementById('user_role').value.trim(),
+      id_toko: parseInt(idTokoVal, 10) || 0,
+      is_active: isActiveInput ? isActiveInput.checked : true,
     };
 
     const pwd = passwordInput.value;
@@ -372,19 +383,17 @@
       }
 
       if (!res.ok) {
-        showToast(data.message || 'Terjadi kesalahan.', 'danger');
+        AppToast.show(data.message || 'Terjadi kesalahan.', 'danger');
         return;
       }
 
       userModal?.hide();
-      saveToastForReload(data.message || (isEdit ? 'Pengguna diperbarui.' : 'Pengguna ditambahkan.'));
+      AppToast.saveForReload(data.message || (isEdit ? 'Pengguna diperbarui.' : 'Pengguna ditambahkan.'));
       window.location.reload();
     } finally {
       submitBtn.disabled = false;
     }
   });
-
-  showSavedToast();
 })();
 </script>
 @endpush

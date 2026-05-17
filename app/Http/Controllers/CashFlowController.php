@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CashFlow;
+use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -12,7 +13,7 @@ class CashFlowController extends Controller
 {
     public function index()
     {
-        $entries = CashFlow::query()
+        $entries = TokoScope::scopeCashFlows(CashFlow::query())
             ->with(['rental.meja.toko'])
             ->orderByDesc('waktu_pembayaran')
             ->orderByDesc('id')
@@ -21,11 +22,26 @@ class CashFlowController extends Controller
         return view('cashflow.index', compact('entries'));
     }
 
+    public function invoice(CashFlow $cashFlow)
+    {
+        if (! $cashFlow->isIncome() || $cashFlow->kelengkapanStatus() !== 'lengkap') {
+            abort(404);
+        }
+
+        TokoScope::authorizeCashFlow($cashFlow);
+
+        $cashFlow->load(['rental.meja.toko']);
+
+        return view('cashflow.invoice', compact('cashFlow'));
+    }
+
     public function updatePaymentMethod(Request $request, CashFlow $cashFlow): JsonResponse
     {
         if (! $cashFlow->isIncome()) {
             abort(404);
         }
+
+        TokoScope::authorizeCashFlow($cashFlow);
 
         $validated = $request->validate([
             'metode_pembayaran' => ['required', 'string', 'max:100'],
@@ -57,6 +73,8 @@ class CashFlowController extends Controller
             abort(404);
         }
 
+        TokoScope::authorizeCashFlow($cashFlow);
+
         $disk = Storage::disk('public');
 
         if (! $disk->exists($cashFlow->bukti_transaksi)) {
@@ -74,6 +92,8 @@ class CashFlowController extends Controller
 
     public function uploadBukti(Request $request, CashFlow $cashFlow): JsonResponse
     {
+        TokoScope::authorizeCashFlow($cashFlow);
+
         $validated = $request->validate([
             'bukti' => ['required', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ]);

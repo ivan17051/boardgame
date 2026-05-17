@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CashFlowController;
+use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\RentalController;
 use App\Http\Controllers\TokoController;
 use App\Http\Controllers\UserController;
@@ -23,6 +24,18 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'store'])
         ->middleware('throttle:10,1')
         ->name('login.store');
+});
+
+Route::prefix('guest')->name('guest.')->group(function () {
+    Route::get('/sewa', [GuestRentalController::class, 'index'])->name('rental.index');
+    Route::get('/sewa/active', [GuestRentalController::class, 'active'])->name('rental.active');
+    Route::post('/sewa/start', [GuestRentalController::class, 'start'])
+        ->middleware('throttle:30,1')
+        ->name('rental.start');
+    Route::get('/sewa/rental/{rental}/preview', [GuestRentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
+    Route::post('/sewa/rental/{rental}/stop', [GuestRentalController::class, 'stop'])
+        ->middleware('throttle:30,1')
+        ->name('rental.stop');
 });
 
 Route::post('/logout', [LoginController::class, 'destroy'])
@@ -49,6 +62,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
     Route::post('/sewa/{rental}/checkout', [RentalController::class, 'checkout'])->name('rental.checkout');
 
+    Route::get('/cashflow/{cashFlow}/invoice', [CashFlowController::class, 'invoice'])->name('cashflow.invoice');
     Route::get('/cashflow', [CashFlowController::class, 'index'])->name('cashflow.index');
     Route::patch('/cashflow/{cashFlow}/metode-pembayaran', [CashFlowController::class, 'updatePaymentMethod'])->name('cashflow.update-metode-pembayaran');
     Route::get('/cashflow/{cashFlow}/bukti', [CashFlowController::class, 'showBukti'])->name('cashflow.bukti');

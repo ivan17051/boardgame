@@ -21,6 +21,7 @@ class Rental extends Model
         'harga',
         'total_harga',
         'status',
+        'guest_token',
     ];
 
     protected $casts = [
