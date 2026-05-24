@@ -21,6 +21,8 @@ class GuestRentalController extends Controller
         $toko = null;
         if ($request->filled('toko')) {
             $toko = Toko::query()->find((int) $request->query('toko'));
+        } elseif ($tokos->isNotEmpty()) {
+            $toko = $tokos->first();
         }
         $mejasAvailable = $this->availableMejasQuery($toko)->get();
 
@@ -107,14 +109,18 @@ class GuestRentalController extends Controller
         $this->authorizeGuestRental($request, $rental);
 
         $rental->loadMissing('meja.toko');
-        $calc = RentalCheckout::computeTotals($rental);
+        $endAt = RentalCheckout::resolveEndTime($rental, $request->query('ended_at'));
+        $calc = RentalCheckout::computeTotals($rental, $endAt);
 
         return response()->json([
             'rental_id' => $rental->id,
+            'ended_at' => $endAt->getTimestamp(),
             'nama_meja' => $rental->meja->nama,
             'nama_toko' => $rental->meja->toko->nama ?? '',
             'nama_customer' => $rental->nama_customer,
             'waktu_start' => $rental->waktu_start->format('d/m/Y H:i:s'),
+            'waktu_end' => $endAt->format('d/m/Y H:i:s'),
+            'durasi_hms' => $calc['durasi_hms'],
             'durasi_menit' => $calc['total_minutes'],
             'durasi_menit_formatted' => number_format($calc['total_minutes'], 2, ',', '.'),
             'harga_per_jam' => (float) $rental->harga,
@@ -129,7 +135,11 @@ class GuestRentalController extends Controller
     {
         $this->authorizeGuestRental($request, $rental);
 
-        $summary = DB::transaction(function () use ($rental) {
+        $validated = $request->validate([
+            'ended_at' => ['nullable', 'integer'],
+        ]);
+
+        $summary = DB::transaction(function () use ($rental, $validated) {
             $locked = Rental::query()
                 ->whereKey($rental->id)
                 ->where('status', 'active')
@@ -140,12 +150,14 @@ class GuestRentalController extends Controller
                 abort(404);
             }
 
-            $calc = RentalCheckout::computeTotals($locked);
-            $now = now();
+            $endAt = RentalCheckout::resolveEndTime($locked, $validated['ended_at'] ?? null);
+            $calc = RentalCheckout::computeTotals($locked, $endAt);
 
             $locked->update([
-                'waktu_end' => $now,
+                'waktu_end' => $endAt,
                 'total_durasi' => $calc['total_minutes'],
+                'total_harga_sewa' => $calc['total_harga_sewa'],
+                'total_harga_additional' => $calc['total_harga_additional'] ?? 0,
                 'total_harga' => $calc['total_harga'],
                 'status' => 'completed',
                 'guest_token' => null,
@@ -163,18 +175,21 @@ class GuestRentalController extends Controller
                 ? "Sewa meja {$mejaNama} ({$tokoNama}) — {$locked->nama_customer}"
                 : "Sewa meja {$mejaNama} — {$locked->nama_customer}";
 
-            CashFlow::query()->firstOrCreate(
-                ['id_rental' => $locked->id],
+            CashFlow::query()->updateOrCreate(
+                [
+                    'id_rental' => $locked->id,
+                    'kategori_pendapatan' => CashFlow::KATEGORI_SEWA_MEJA,
+                ],
                 [
                     'tipe_transaksi' => 'income',
-                    'total' => $calc['total_harga'],
+                    'total' => $calc['total_harga_sewa'],
                     'keterangan' => $deskripsi,
                     'metode_pembayaran' => null,
-                    'waktu_pembayaran' => $now,
+                    'waktu_pembayaran' => $endAt,
                     'idc' => 0,
                     'idm' => 0,
-                    'doc' => $now,
-                    'dom' => $now,
+                    'doc' => $endAt,
+                    'dom' => $endAt,
                 ]
             );
 
@@ -183,6 +198,8 @@ class GuestRentalController extends Controller
                 'nama_meja' => $mejaNama,
                 'nama_toko' => $tokoNama,
                 'keterangan' => $deskripsi,
+                'waktu_end' => $endAt->format('d/m/Y H:i:s'),
+                'durasi_hms' => $calc['durasi_hms'],
                 'durasi_menit' => $calc['total_minutes'],
                 'durasi_menit_formatted' => number_format($calc['total_minutes'], 2, ',', '.'),
                 'total_harga' => $calc['total_harga'],

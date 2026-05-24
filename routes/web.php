@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\AdditionalItemController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CashFlowController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\RentalController;
 use App\Http\Controllers\TokoController;
@@ -19,15 +21,34 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::middleware('guest')->group(function () {
-    Route::get('/login', [LoginController::class, 'create'])->name('login');
-    Route::post('/login', [LoginController::class, 'store'])
-        ->middleware('throttle:10,1')
-        ->name('login.store');
-});
+// Route::middleware('guest')->group(function () {
+//     Route::get('/login', [LoginController::class, 'create'])->name('login');
+//     Route::post('/login', [LoginController::class, 'store'])
+//         ->middleware('throttle:10,1')
+//         ->name('login.store');
+// });
+Route::get('/login', [LoginController::class, 'create'])->name('login');
+Route::post('/login', [LoginController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('login.store');
+
+Route::get('/', function () {
+    if (auth()->check()) {
+        return redirect()->route('rental.index');
+    }
+
+    // return app(GuestRentalController::class)->index(request());
+    return redirect()->route('login');
+})->name('home');
 
 Route::prefix('guest')->name('guest.')->group(function () {
-    Route::get('/sewa', [GuestRentalController::class, 'index'])->name('rental.index');
+    Route::get('/sewa', function () {
+        if (auth()->check()) {
+            return redirect()->route('rental.index');
+        }
+
+        return redirect()->route('home', request()->query());
+    })->name('rental.index');
     Route::get('/sewa/active', [GuestRentalController::class, 'active'])->name('rental.active');
     Route::post('/sewa/start', [GuestRentalController::class, 'start'])
         ->middleware('throttle:30,1')
@@ -43,9 +64,7 @@ Route::post('/logout', [LoginController::class, 'destroy'])
     ->name('logout');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/', function () {
-        return view('index');
-    });
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
@@ -59,9 +78,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/sewa', [RentalController::class, 'index'])->name('rental.index');
     Route::post('/sewa', [RentalController::class, 'store'])->name('rental.store');
-    Route::get('/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
+    Route::match(['get', 'post'], '/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
+
+    Route::get('/additional-items', [AdditionalItemController::class, 'index'])->name('additional-items.index');
+    Route::post('/additional-items', [AdditionalItemController::class, 'store'])->name('additional-items.store');
+    Route::put('/additional-items/{additionalItem}', [AdditionalItemController::class, 'update'])->name('additional-items.update');
+    Route::delete('/additional-items/{additionalItem}', [AdditionalItemController::class, 'destroy'])->name('additional-items.destroy');
     Route::post('/sewa/{rental}/checkout', [RentalController::class, 'checkout'])->name('rental.checkout');
 
+    Route::get('/cashflow/laporan', [CashFlowController::class, 'report'])->name('cashflow.report');
     Route::get('/cashflow/{cashFlow}/invoice', [CashFlowController::class, 'invoice'])->name('cashflow.invoice');
     Route::get('/cashflow', [CashFlowController::class, 'index'])->name('cashflow.index');
     Route::patch('/cashflow/{cashFlow}/metode-pembayaran', [CashFlowController::class, 'updatePaymentMethod'])->name('cashflow.update-metode-pembayaran');

@@ -164,11 +164,11 @@
             <!--end::Row-->
           </form>
 
-          <p class="text-center mt-3 mb-0">
-            <a href="{{ route('guest.rental.index') }}" class="small text-secondary">
+          <!-- <p class="text-center mt-3 mb-0">
+            <a href="{{ route('home') }}" class="small text-secondary">
               <i class="bi bi-play-circle me-1"></i>Sewa meja mandiri (tamu)
             </a>
-          </p>
+          </p> -->
 
           <!-- <div class="social-auth-links text-center mb-3 d-grid gap-2">
             <p>- ATAU -</p>

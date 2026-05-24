@@ -10,7 +10,7 @@
       </div>
       <div class="col-sm-6">
         <ol class="breadcrumb float-sm-end">
-          <li class="breadcrumb-item"><a href="{{ url('/') }}">Beranda</a></li>
+          <li class="breadcrumb-item"><a href="#">Data Master</a></li>
           <li class="breadcrumb-item active" aria-current="page">Toko</li>
         </ol>
       </div>
@@ -25,7 +25,7 @@
       <div class="card-header">
         <div class="row">
           <div class="col-md-6">
-            <h3 class="card-title mb-0">Semua toko</h3>
+            <h3 class="card-title mb-0">Semua Toko</h3>
           </div>
           <div class="col-md-6 text-end">
             <button type="button" class="btn btn-primary btn-sm" id="btn-add-toko" data-bs-toggle="modal" data-bs-target="#tokoModal">
@@ -128,7 +128,7 @@
             <div class="mb-0">
               <label for="toko_jumlah_meja" class="form-label">Jumlah meja</label>
               <input type="number" class="form-control" id="toko_jumlah_meja" name="jumlah_meja" min="0" step="1" required />
-              <div class="form-text">Langkah berikutnya: isi nama dan harga untuk setiap meja.</div>
+              <div class="form-text">Langkah berikutnya: isi nama, harga non-member, dan harga member untuk setiap meja.</div>
             </div>
           </div>
 
@@ -342,7 +342,7 @@
       row.className = 'row g-2';
 
       const colNama = document.createElement('div');
-      colNama.className = 'col-md-6';
+      colNama.className = 'col-md-12';
       const lblNama = document.createElement('label');
       lblNama.className = 'form-label';
       lblNama.textContent = 'Nama meja';
@@ -359,7 +359,7 @@
       colHarga.className = 'col-md-6';
       const lblHarga = document.createElement('label');
       lblHarga.className = 'form-label';
-      lblHarga.textContent = 'Harga';
+      lblHarga.textContent = 'Harga non-member / jam';
       const inpHarga = document.createElement('input');
       inpHarga.type = 'number';
       inpHarga.className = 'form-control meja-harga';
@@ -370,8 +370,23 @@
       colHarga.appendChild(lblHarga);
       colHarga.appendChild(inpHarga);
 
+      const colHargaMember = document.createElement('div');
+      colHargaMember.className = 'col-md-6';
+      const lblHargaMember = document.createElement('label');
+      lblHargaMember.className = 'form-label';
+      lblHargaMember.textContent = 'Harga member / jam';
+      const inpHargaMember = document.createElement('input');
+      inpHargaMember.type = 'number';
+      inpHargaMember.className = 'form-control meja-harga-member';
+      inpHargaMember.min = '0';
+      inpHargaMember.step = '0.01';
+      if (rowData.harga_member != null && rowData.harga_member !== '') inpHargaMember.value = String(rowData.harga_member);
+      colHargaMember.appendChild(lblHargaMember);
+      colHargaMember.appendChild(inpHargaMember);
+
       row.appendChild(colNama);
       row.appendChild(colHarga);
+      row.appendChild(colHargaMember);
       wrap.appendChild(row);
       mejaInputsContainer.appendChild(wrap);
     }
@@ -386,10 +401,13 @@
     wraps.forEach((wrap) => {
       const nama = wrap.querySelector('.meja-nama')?.value.trim() ?? '';
       const hargaRaw = wrap.querySelector('.meja-harga')?.value ?? '';
+      const hargaMemberRaw = wrap.querySelector('.meja-harga-member')?.value ?? '';
       const harga = hargaRaw === '' ? 0 : parseFloat(hargaRaw);
+      const hargaMember = hargaMemberRaw === '' ? null : parseFloat(hargaMemberRaw);
       meja.push({
         nama,
         harga: Number.isFinite(harga) ? harga : 0,
+        harga_member: hargaMemberRaw !== '' && Number.isFinite(hargaMember) ? hargaMember : null,
       });
     });
     return meja;

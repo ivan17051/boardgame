@@ -20,6 +20,7 @@ class Meja extends Model
         'id_toko',
         'nama',
         'harga',
+        'harga_member',
         'status',
         'idc',
         'doc',
@@ -29,6 +30,7 @@ class Meja extends Model
 
     protected $casts = [
         'harga' => 'decimal:2',
+        'harga_member' => 'decimal:3',
         'doc' => 'datetime',
         'dom' => 'datetime',
     ];

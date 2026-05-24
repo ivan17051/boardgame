@@ -61,6 +61,17 @@ class TokoScope
         });
     }
 
+    public static function scopeRentals(Builder $query): Builder
+    {
+        if (self::canSeeAll()) {
+            return $query;
+        }
+
+        return $query->whereHas('meja', function (Builder $q) {
+            $q->where('id_toko', self::userIdToko());
+        });
+    }
+
     public static function resolveIdTokoForSave($requested): int
     {
         if (self::canSeeAll()) {

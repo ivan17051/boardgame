@@ -11,15 +11,84 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CashFlowController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $entries = TokoScope::scopeCashFlows(CashFlow::query())
-            ->with(['rental.meja.toko'])
+        $filterDate = $request->input('date', now()->toDateString());
+        $onlyBelumLengkap = $request->input('belum_lengkap', '1') !== '0';
+
+        $query = TokoScope::scopeCashFlows(CashFlow::query())
+            ->with(['rental.meja.toko']);
+
+        if ($filterDate !== '' && $filterDate !== 'all') {
+            $query->whereDate('waktu_pembayaran', $filterDate);
+        }
+
+        if ($onlyBelumLengkap) {
+            $query->where('tipe_transaksi', 'income')
+                ->incompleteKelengkapan();
+        }
+
+        $entries = $query
             ->orderByDesc('waktu_pembayaran')
             ->orderByDesc('id')
             ->get();
 
-        return view('cashflow.index', compact('entries'));
+        return view('cashflow.index', compact('entries', 'filterDate', 'onlyBelumLengkap'));
+    }
+
+    public function report(Request $request)
+    {
+        $validated = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'print' => ['nullable', 'in:1'],
+        ]);
+
+        $dateFrom = $validated['date_from'] ?? now()->toDateString();
+        $dateTo = $validated['date_to'] ?? $dateFrom;
+
+        $entries = TokoScope::scopeCashFlows(CashFlow::query())
+            ->with(['rental.meja.toko'])
+            ->whereDate('waktu_pembayaran', '>=', $dateFrom)
+            ->whereDate('waktu_pembayaran', '<=', $dateTo)
+            ->orderBy('waktu_pembayaran')
+            ->orderBy('id')
+            ->get();
+
+        $incomeRows = $entries->filter(fn (CashFlow $row) => $row->isIncome());
+        $expenseRows = $entries->filter(fn (CashFlow $row) => ! $row->isIncome());
+
+        $summary = [
+            'total_income_tagihan' => (float) $incomeRows->sum(fn (CashFlow $r) => (float) $r->total),
+            'total_income_bayar' => (float) $incomeRows->sum(fn (CashFlow $r) => $r->amountPaid()),
+            'total_sewa_meja' => (float) $incomeRows
+                ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_SEWA_MEJA)
+                ->sum(fn (CashFlow $r) => $r->amountPaid()),
+            'total_additional_fb' => (float) $incomeRows
+                ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_ADDITIONAL_FB)
+                ->sum(fn (CashFlow $r) => $r->amountPaid()),
+            'total_expense' => (float) $expenseRows->sum(fn (CashFlow $r) => (float) $r->total),
+            'count_income' => $incomeRows->count(),
+            'count_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() === 'lengkap')->count(),
+            'count_belum_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() !== 'lengkap')->count(),
+            'by_metode' => $incomeRows
+                ->filter(fn (CashFlow $r) => ! empty($r->metode_pembayaran))
+                ->groupBy('metode_pembayaran')
+                ->map(fn ($group) => [
+                    'count' => $group->count(),
+                    'total' => (float) $group->sum(fn (CashFlow $r) => $r->amountPaid()),
+                ]),
+        ];
+
+        $summary['net'] = $summary['total_income_bayar'] - $summary['total_expense'];
+
+        $data = compact('entries', 'incomeRows', 'expenseRows', 'summary', 'dateFrom', 'dateTo');
+
+        if ($request->input('print') === '1') {
+            return view('cashflow.report-print', $data);
+        }
+
+        return view('cashflow.report', $data);
     }
 
     public function invoice(CashFlow $cashFlow)
@@ -45,6 +114,7 @@ class CashFlowController extends Controller
 
         $validated = $request->validate([
             'metode_pembayaran' => ['required', 'string', 'max:100'],
+            'jumlah_bayar' => ['required', 'numeric', 'min:0'],
         ]);
 
         $now = now();
@@ -52,6 +122,7 @@ class CashFlowController extends Controller
 
         $cashFlow->update([
             'metode_pembayaran' => $validated['metode_pembayaran'],
+            'jumlah_bayar' => $validated['jumlah_bayar'],
             'dom' => $now,
             'idm' => $uid,
         ]);
@@ -59,9 +130,11 @@ class CashFlowController extends Controller
         $cashFlow->refresh();
 
         return response()->json([
-            'message' => 'Metode pembayaran disimpan.',
+            'message' => 'Data pembayaran disimpan.',
             'metode_pembayaran' => $cashFlow->metode_pembayaran,
             'metode_pembayaran_label' => CashFlow::metodePembayaranLabel($cashFlow->metode_pembayaran),
+            'jumlah_bayar' => (float) $cashFlow->jumlah_bayar,
+            'jumlah_bayar_formatted' => number_format((float) $cashFlow->jumlah_bayar, 0, ',', '.'),
             'status' => $cashFlow->kelengkapanStatus(),
             'status_label' => $cashFlow->kelengkapanStatusLabel(),
         ]);

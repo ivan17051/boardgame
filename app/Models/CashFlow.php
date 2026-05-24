@@ -2,11 +2,16 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CashFlow extends Model
 {
+    public const KATEGORI_SEWA_MEJA = 'sewa_meja';
+
+    public const KATEGORI_ADDITIONAL_FB = 'additional_fb';
+
     protected $table = 'cash_flow';
 
     public $timestamps = false;
@@ -14,8 +19,10 @@ class CashFlow extends Model
     protected $fillable = [
         'id_rental',
         'tipe_transaksi',
+        'kategori_pendapatan',
         'metode_pembayaran',
         'total',
+        'jumlah_bayar',
         'keterangan',
         'waktu_pembayaran',
         'bukti_transaksi',
@@ -27,6 +34,7 @@ class CashFlow extends Model
 
     protected $casts = [
         'total' => 'decimal:3',
+        'jumlah_bayar' => 'decimal:3',
         'waktu_pembayaran' => 'datetime',
         'doc' => 'datetime',
         'dom' => 'datetime',
@@ -40,6 +48,18 @@ class CashFlow extends Model
     public function isIncome(): bool
     {
         return $this->tipe_transaksi == 'income';
+    }
+
+    public static function kategoriPendapatanLabel(?string $code): string
+    {
+        switch ($code) {
+            case self::KATEGORI_SEWA_MEJA:
+                return 'Sewa Meja';
+            case self::KATEGORI_ADDITIONAL_FB:
+                return 'Additional Item (F&B)';
+            default:
+                return $code ? $code : '—';
+        }
     }
 
     public static function metodePembayaranLabel(?string $code): string
@@ -69,6 +89,22 @@ class CashFlow extends Model
         return route('cashflow.bukti', $this);
     }
 
+    public function scopeIncompleteKelengkapan(Builder $query): Builder
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('metode_pembayaran')
+                ->orWhere(function ($q2) {
+                    $q2->where('metode_pembayaran', '!=', 'tunai')
+                        ->whereNull('bukti_transaksi');
+                });
+        });
+    }
+
+    public function requiresBuktiTransaksi(): bool
+    {
+        return $this->metode_pembayaran !== 'tunai';
+    }
+
     /**
      * @return string belum|sebagian|lengkap
      */
@@ -76,8 +112,9 @@ class CashFlow extends Model
     {
         $hasMetode = ! empty($this->metode_pembayaran);
         $hasBukti = ! empty($this->bukti_transaksi);
+        $buktiRequired = $this->requiresBuktiTransaksi();
 
-        if ($hasMetode && $hasBukti) {
+        if ($hasMetode && (! $buktiRequired || $hasBukti)) {
             return 'lengkap';
         }
 
@@ -86,6 +123,11 @@ class CashFlow extends Model
         }
 
         return 'belum';
+    }
+
+    public function amountPaid(): float
+    {
+        return (float) ($this->jumlah_bayar ?? $this->total);
     }
 
     public function kelengkapanStatusLabel(): string

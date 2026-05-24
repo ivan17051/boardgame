@@ -151,7 +151,6 @@
         <div class="mb-3">
           <label for="guest_toko_filter" class="form-label">Toko</label>
           <select class="form-select" id="guest_toko_filter">
-            <option value="">Semua toko</option>
             @foreach ($tokos as $t)
               <option value="{{ $t->id }}" {{ $selectedToko && $selectedToko->id === $t->id ? 'selected' : '' }}>{{ $t->nama }}</option>
             @endforeach
@@ -215,7 +214,9 @@
       </div>
       <p class="text-secondary small mb-1">Total tagihan</p>
       <p class="guest-total-amount mb-2">Rp <span id="guestDoneTotal">0</span></p>
-      <p class="small text-secondary mb-3">Durasi: <span id="guestDoneDurasi">—</span> menit</p>
+      <p class="small text-secondary mb-1">Durasi</p>
+      <p class="guest-timer mb-1" id="guestDoneDurasiHms" style="font-size:1.75rem;">00:00:00</p>
+      <p class="small text-secondary mb-3" id="guestDoneDurasiMenit"></p>
       <div class="guest-payment-note text-start mb-3">
         <p class="mb-0 fw-semibold" style="color: var(--guest-brand);">
           <i class="bi bi-cash-coin me-1"></i>
@@ -262,7 +263,7 @@
       start: @json(route('guest.rental.start')),
       preview: (id) => @json(url('/guest/sewa/rental')) + '/' + id + '/preview',
       stop: (id) => @json(url('/guest/sewa/rental')) + '/' + id + '/stop',
-      index: @json(route('guest.rental.index')),
+      index: @json(route('home')),
     };
 
     const panelStart = document.getElementById('guestPanelStart');
@@ -282,6 +283,7 @@
 
     let activeRental = null;
     let timerInterval = null;
+    let frozenEndEpoch = null;
 
     function getToken() {
       try {
@@ -334,12 +336,30 @@
 
     function tickTimer() {
       if (!activeRental || !timerEl) return;
-      const now = Math.floor(Date.now() / 1000);
-      timerEl.textContent = formatHMS(now - activeRental.start_epoch);
+      const end = frozenEndEpoch != null ? frozenEndEpoch : Math.floor(Date.now() / 1000);
+      timerEl.textContent = formatHMS(end - activeRental.start_epoch);
+    }
+
+    function freezeTimer() {
+      if (!activeRental) return null;
+      frozenEndEpoch = Math.floor(Date.now() / 1000);
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      tickTimer();
+      return frozenEndEpoch;
+    }
+
+    function resumeTimer() {
+      if (!activeRental) return;
+      frozenEndEpoch = null;
+      startTimerInterval();
     }
 
     function startTimerInterval() {
       if (timerInterval) clearInterval(timerInterval);
+      frozenEndEpoch = null;
       tickTimer();
       timerInterval = setInterval(tickTimer, 1000);
     }
@@ -359,6 +379,7 @@
 
     function showStartPanel() {
       activeRental = null;
+      frozenEndEpoch = null;
       if (timerInterval) clearInterval(timerInterval);
       panelActive?.classList.add('d-none');
       panelDone?.classList.add('d-none');
@@ -367,6 +388,7 @@
 
     function showDonePanel(summary) {
       activeRental = null;
+      frozenEndEpoch = null;
       if (timerInterval) clearInterval(timerInterval);
       panelStart?.classList.add('d-none');
       panelActive?.classList.add('d-none');
@@ -382,8 +404,15 @@
       const totalEl = document.getElementById('guestDoneTotal');
       if (totalEl) totalEl.textContent = summary.total_harga_formatted || '0';
 
-      const durasiEl = document.getElementById('guestDoneDurasi');
-      if (durasiEl) durasiEl.textContent = summary.durasi_menit_formatted || '—';
+      const durasiHmsEl = document.getElementById('guestDoneDurasiHms');
+      if (durasiHmsEl) durasiHmsEl.textContent = summary.durasi_hms || '00:00:00';
+
+      const durasiMenitEl = document.getElementById('guestDoneDurasiMenit');
+      if (durasiMenitEl) {
+        const menit = summary.durasi_menit_formatted || '—';
+        const selesai = summary.waktu_end ? ' · Selesai ' + summary.waktu_end : '';
+        durasiMenitEl.textContent = '(' + menit + ' menit)' + selesai;
+      }
 
       const ketEl = document.getElementById('guestDoneKeterangan');
       if (ketEl) ketEl.textContent = summary.keterangan || '';
@@ -469,14 +498,27 @@
       }
     });
 
+    if (stopModalEl) {
+      stopModalEl.addEventListener('hidden.bs.modal', function () {
+        if (activeRental && frozenEndEpoch != null) {
+          resumeTimer();
+        }
+        btnConfirmStop.disabled = true;
+      });
+    }
+
     btnStop?.addEventListener('click', function () {
       if (!activeRental || !stopModal) return;
       hideAlert();
+      const endedAt = freezeTimer();
       btnConfirmStop.disabled = true;
       stopSummary.innerHTML = '<p class="text-secondary mb-0">Memuat…</p>';
       stopModal.show();
 
-      fetch(routes.preview(activeRental.id), { headers: guestHeaders(false) })
+      const previewUrl = routes.preview(activeRental.id) +
+        (endedAt != null ? '?ended_at=' + encodeURIComponent(String(endedAt)) : '');
+
+      fetch(previewUrl, { headers: guestHeaders(false) })
         .then(function (res) {
           return res.json().then(function (body) {
             return { ok: res.ok, body: body };
@@ -490,7 +532,9 @@
           const d = r.body;
           stopSummary.innerHTML =
             '<p class="mb-2"><strong>' + escapeHtml(d.nama_meja) + '</strong> · ' + escapeHtml(d.nama_customer) + '</p>' +
-            '<p class="mb-2 text-secondary small">Mulai: ' + escapeHtml(d.waktu_start) + '</p>' +
+            '<p class="mb-2 text-secondary small">Mulai: ' + escapeHtml(d.waktu_start) +
+            (d.waktu_end ? '<br>Selesai: ' + escapeHtml(d.waktu_end) : '') + '</p>' +
+            (d.durasi_hms ? '<p class="mb-2 font-monospace fw-semibold">' + escapeHtml(d.durasi_hms) + '</p>' : '') +
             (d.breakdown_html || '');
           btnConfirmStop.disabled = false;
         })
@@ -501,10 +545,12 @@
 
     btnConfirmStop?.addEventListener('click', function () {
       if (!activeRental) return;
+      const endedAt = frozenEndEpoch != null ? frozenEndEpoch : Math.floor(Date.now() / 1000);
       btnConfirmStop.disabled = true;
       fetch(routes.stop(activeRental.id), {
         method: 'POST',
-        headers: guestHeaders(false),
+        headers: guestHeaders(true),
+        body: JSON.stringify({ ended_at: endedAt }),
       })
         .then(function (res) {
           return res.json().then(function (body) {

@@ -170,8 +170,12 @@
     </table>
 
     <div class="amount-box">
-      <div class="label">Total pembayaran</div>
-      <div class="value">Rp {{ number_format((float) $cashFlow->total, 0, ',', '.') }}</div>
+      @if ($cashFlow->jumlah_bayar !== null && (float) $cashFlow->jumlah_bayar !== (float) $cashFlow->total)
+        <div class="label">Tagihan sewa</div>
+        <div class="value" style="font-size:1rem;margin-bottom:0.5rem;">Rp {{ number_format((float) $cashFlow->total, 0, ',', '.') }}</div>
+      @endif
+      <div class="label">Jumlah dibayar</div>
+      <div class="value">Rp {{ number_format($cashFlow->amountPaid(), 0, ',', '.') }}</div>
     </div>
 
     <p style="font-size:0.9rem;color:#444;margin:0;">

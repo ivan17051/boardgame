@@ -9,7 +9,7 @@
       </div>
       <div class="col-sm-6">
         <ol class="breadcrumb float-sm-end">
-          <li class="breadcrumb-item"><a href="{{ url('/') }}">Beranda</a></li>
+          <li class="breadcrumb-item"><a href="{{ route('dashboard') }}">Beranda</a></li>
           <li class="breadcrumb-item active" aria-current="page">Arus kas</li>
         </ol>
       </div>
@@ -22,13 +22,54 @@
   <div class="callout callout-warning mb-4">
       <h5 class="fw-bold">Catatan!</h5>
       <p>
-        Pendapatan dari sewa meja masuk otomatis setelah checkout. Klik <strong>Lengkapi</strong> untuk mengisi metode pembayaran dan bukti transaksi.
+        Pembayaran diisi saat checkout di halaman <strong>Sewa Meja</strong>. Gunakan tombol <i class="bi bi-pencil-square"></i> di sini hanya untuk mengoreksi data yang sudah tersimpan.
       </p>
     </div>
     
     <div class="card">
       <div class="card-header">
-        <h3 class="card-title mb-0">Riwayat pemasukan</h3>
+        <div class="row align-items-end g-2">
+          <div class="col-md-4 d-flex align-items-center gap-2 flex-wrap">
+            <h3 class="card-title mb-0">Riwayat pemasukan</h3>
+            <a href="{{ route('cashflow.report') }}" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-file-earmark-bar-graph me-1"></i> Laporan
+            </a>
+          </div>
+          <div class="col-md-8">
+            <form method="GET" action="{{ route('cashflow.index') }}" class="row g-2 justify-content-md-end align-items-end" data-no-page-loader>
+              <div class="col-sm-5 col-md-4">
+                <label for="filter_date" class="form-label small mb-1">Tanggal</label>
+                <input
+                  type="date"
+                  class="form-control form-control-sm"
+                  id="filter_date"
+                  name="date"
+                  value="{{ $filterDate === 'all' ? '' : $filterDate }}"
+                />
+              </div>
+              <div class="col-sm-5 col-md-4">
+                <div class="form-check mb-2">
+                  <input type="hidden" name="belum_lengkap" value="0" />
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="filter_belum_lengkap"
+                    name="belum_lengkap"
+                    value="1"
+                    {{ $onlyBelumLengkap ? 'checked' : '' }}
+                  />
+                  <label class="form-check-label small" for="filter_belum_lengkap">
+                    Sembunyikan status Lengkap
+                  </label>
+                </div>
+              </div>
+              <div class="col-sm-2 col-md-auto d-flex gap-1">
+                <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+                <a href="{{ route('cashflow.index', ['date' => now()->toDateString(), 'belum_lengkap' => 1]) }}" class="btn btn-outline-secondary btn-sm" title="Reset ke hari ini">Hari ini</a>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -53,6 +94,8 @@
                   data-keterangan="{{ e($row->keterangan) }}"
                   data-tanggal="{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}"
                   data-total="{{ number_format((float) $row->total, 0, ',', '.') }}"
+                  data-total-raw="{{ (float) $row->total }}"
+                  data-jumlah-bayar="{{ $row->jumlah_bayar !== null ? (float) $row->jumlah_bayar : '' }}"
                   data-metode="{{ $row->metode_pembayaran ?? '' }}"
                   data-bukti-url="{{ $row->buktiUrl() ?? '' }}"
                   data-status="{{ $status }}"
@@ -61,6 +104,9 @@
                   <td class="col-jenis">
                     @if ($row->tipe_transaksi == 'income')
                       <span class="badge text-bg-success">Pemasukan</span>
+                      @if ($row->kategori_pendapatan)
+                        <div class="small text-secondary mt-1">{{ \App\Models\CashFlow::kategoriPendapatanLabel($row->kategori_pendapatan) }}</div>
+                      @endif
                     @else
                       <span class="badge text-bg-danger">Pengeluaran</span>
                     @endif
@@ -68,7 +114,7 @@
                   <td class="text-break col-keterangan">{{ $row->keterangan ?: '-' }}</td>
                   <td class="text-end font-monospace col-jumlah">
                     @if ($row->tipe_transaksi == 'income')
-                      <span class="text-success">+ Rp {{ number_format((float) $row->total, 0, ',', '.') }}</span>
+                      <span class="text-success col-jumlah-display">+ Rp {{ number_format($row->amountPaid(), 0, ',', '.') }}</span>
                     @else
                       <span class="text-danger">− Rp {{ number_format((float) $row->total, 0, ',', '.') }}</span>
                     @endif
@@ -105,7 +151,7 @@
                             target="_blank"
                             rel="noopener noreferrer"
                             data-no-page-loader
-                            title="Cetak kuitansi"
+                            title="Cetak kwitansi"
                           >
                             <i class="bi bi-printer"></i>
                           </a>
@@ -118,7 +164,12 @@
                 </tr>
               @empty
                 <tr>
-                  <td colspan="6" class="text-center text-secondary py-4">Belum ada entri arus kas.</td>
+                  <td colspan="6" class="text-center text-secondary py-4">
+                    Tidak ada data untuk filter ini.
+                    @if ($onlyBelumLengkap)
+                      <span class="d-block small mt-1">Coba matikan filter &quot;Sembunyikan status Lengkap&quot; atau ubah tanggal.</span>
+                    @endif
+                  </td>
                 </tr>
               @endforelse
             </tbody>
@@ -146,11 +197,28 @@
           <dd class="col-sm-8 mb-1" id="kelengkapan_tanggal">—</dd>
           <dt class="col-sm-4 text-secondary">Keterangan</dt>
           <dd class="col-sm-8 mb-1" id="kelengkapan_keterangan">—</dd>
-          <dt class="col-sm-4 text-secondary">Jumlah</dt>
-          <dd class="col-sm-8 mb-0" id="kelengkapan_jumlah">—</dd>
+          <dt class="col-sm-4 text-secondary">Tagihan</dt>
+          <dd class="col-sm-8 mb-1" id="kelengkapan_tagihan">—</dd>
         </dl>
 
         <hr class="my-3" />
+
+        <div class="mb-3">
+          <label for="kelengkapan_jumlah_bayar" class="form-label">Jumlah bayar <span class="text-danger">*</span></label>
+          <div class="input-group">
+            <span class="input-group-text">Rp</span>
+            <input
+              type="number"
+              class="form-control"
+              id="kelengkapan_jumlah_bayar"
+              name="jumlah_bayar"
+              min="0"
+              step="1"
+              required
+            />
+          </div>
+          <div class="form-text">Isi nominal yang dibayar pelanggan di kasir.</div>
+        </div>
 
         <div class="mb-3">
           <label for="kelengkapan_metode" class="form-label">Metode pembayaran</label>
@@ -164,8 +232,8 @@
           </select>
         </div>
 
-        <div class="mb-0">
-          <label for="kelengkapan_bukti" class="form-label">Bukti transaksi</label>
+        <div class="mb-0" id="kelengkapan_bukti_wrap">
+          <label for="kelengkapan_bukti" class="form-label">Bukti transaksi <span id="kelengkapan_bukti_required" class="text-danger">*</span></label>
           <div id="kelengkapan_bukti_existing" class="mb-2"></div>
           <input
             type="file"
@@ -173,7 +241,7 @@
             id="kelengkapan_bukti"
             accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
           />
-          <div class="form-text">JPG, PNG, WEBP, atau PDF. Maks. 5&nbsp;MB. Kosongkan jika tidak mengganti bukti.</div>
+          <div class="form-text" id="kelengkapan_bukti_help">JPG, PNG, WEBP, atau PDF. Maks. 5&nbsp;MB. Kosongkan jika tidak mengganti bukti.</div>
         </div>
       </div>
       <div class="modal-footer">
@@ -197,13 +265,28 @@
   const idInput = document.getElementById('kelengkapan_id');
   const tanggalEl = document.getElementById('kelengkapan_tanggal');
   const keteranganEl = document.getElementById('kelengkapan_keterangan');
-  const jumlahEl = document.getElementById('kelengkapan_jumlah');
+  const tagihanEl = document.getElementById('kelengkapan_tagihan');
+  const jumlahBayarEl = document.getElementById('kelengkapan_jumlah_bayar');
   const metodeEl = document.getElementById('kelengkapan_metode');
   const buktiInput = document.getElementById('kelengkapan_bukti');
   const buktiExistingEl = document.getElementById('kelengkapan_bukti_existing');
   const saveBtn = document.getElementById('kelengkapanSaveBtn');
+  const buktiRequiredMark = document.getElementById('kelengkapan_bukti_required');
+  const buktiHelpEl = document.getElementById('kelengkapan_bukti_help');
 
   let activeRow = null;
+
+  function syncBuktiFieldForMetode() {
+    const isTunai = metodeEl && metodeEl.value === 'tunai';
+    if (buktiRequiredMark) {
+      buktiRequiredMark.classList.toggle('d-none', isTunai);
+    }
+    if (buktiHelpEl) {
+      buktiHelpEl.textContent = isTunai
+        ? 'Opsional untuk pembayaran tunai. Unggah jika diperlukan arsip.'
+        : 'Wajib untuk metode non-tunai. JPG, PNG, WEBP, atau PDF. Maks. 5 MB. Kosongkan jika tidak mengganti bukti.';
+    }
+  }
 
   function hideAlert() {
     if (!alertEl) return;
@@ -247,8 +330,14 @@
       '<i class="bi bi-file-earmark-arrow-up me-1"></i>Lihat bukti saat ini</a>';
   }
 
+  const hideLengkapOnSave = @json($onlyBelumLengkap);
+
   function updateRowFromResponse(tr, body) {
     if (!tr || !body) return;
+    if (body.status === 'lengkap' && hideLengkapOnSave) {
+      tr.remove();
+      return;
+    }
     if (body.metode_pembayaran !== undefined) {
       tr.setAttribute('data-metode', body.metode_pembayaran || '');
     }
@@ -260,6 +349,13 @@
       const statusCell = tr.querySelector('.col-status');
       if (statusCell) {
         statusCell.innerHTML = statusBadgeHtml(body.status, body.status_label);
+      }
+    }
+    if (body.jumlah_bayar !== undefined) {
+      tr.setAttribute('data-jumlah-bayar', String(body.jumlah_bayar));
+      const jumlahCell = tr.querySelector('.col-jumlah-display');
+      if (jumlahCell && body.jumlah_bayar_formatted) {
+        jumlahCell.textContent = '+ Rp ' + body.jumlah_bayar_formatted;
       }
     }
   }
@@ -274,18 +370,29 @@
       const keterangan = activeRow.getAttribute('data-keterangan') || '—';
       const tanggal = activeRow.getAttribute('data-tanggal') || '—';
       const total = activeRow.getAttribute('data-total') || '0';
+      const totalRaw = parseFloat(activeRow.getAttribute('data-total-raw') || '0');
+      const jumlahBayarRaw = activeRow.getAttribute('data-jumlah-bayar');
       const metode = activeRow.getAttribute('data-metode') || '';
       const buktiUrl = activeRow.getAttribute('data-bukti-url') || '';
 
       if (idInput) idInput.value = id;
       if (tanggalEl) tanggalEl.textContent = tanggal;
       if (keteranganEl) keteranganEl.textContent = keterangan;
-      if (jumlahEl) jumlahEl.textContent = 'Rp ' + total;
+      if (tagihanEl) tagihanEl.textContent = 'Rp ' + total;
+      if (jumlahBayarEl) {
+        const bayar = jumlahBayarRaw !== '' && jumlahBayarRaw !== null && !Number.isNaN(parseFloat(jumlahBayarRaw))
+          ? parseFloat(jumlahBayarRaw)
+          : (Number.isFinite(totalRaw) ? totalRaw : 0);
+        jumlahBayarEl.value = String(Math.round(bayar));
+      }
       if (metodeEl) metodeEl.value = metode;
+      syncBuktiFieldForMetode();
       if (buktiInput) buktiInput.value = '';
       setBuktiExisting(buktiUrl);
     });
   });
+
+  metodeEl?.addEventListener('change', syncBuktiFieldForMetode);
 
   if (modalEl) {
     modalEl.addEventListener('hidden.bs.modal', function () {
@@ -306,9 +413,19 @@
       hideAlert();
       const id = idInput ? idInput.value : '';
       const metode = metodeEl ? metodeEl.value : '';
+      const jumlahBayarRaw = jumlahBayarEl ? jumlahBayarEl.value : '';
+      const jumlahBayar = jumlahBayarRaw === '' ? NaN : parseFloat(jumlahBayarRaw);
       const hasFile = buktiInput && buktiInput.files && buktiInput.files.length > 0;
 
       if (!id) return;
+      if (!Number.isFinite(jumlahBayar) || jumlahBayar < 0) {
+        showAlert('Jumlah bayar wajib diisi (min. 0).');
+        if (typeof AppToast !== 'undefined') {
+          AppToast.show('Jumlah bayar wajib diisi.', 'warning');
+        }
+        jumlahBayarEl?.focus();
+        return;
+      }
       if (!metode) {
         showAlert('Pilih metode pembayaran.');
         if (typeof AppToast !== 'undefined') {
@@ -327,7 +444,7 @@
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ metode_pembayaran: metode }),
+        body: JSON.stringify({ metode_pembayaran: metode, jumlah_bayar: jumlahBayar }),
       })
         .then(function (res) {
           return res.json().then(function (body) {

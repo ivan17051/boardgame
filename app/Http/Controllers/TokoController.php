@@ -35,6 +35,7 @@ class TokoController extends Controller
             'meja' => ['required', 'array'],
             'meja.*.nama' => ['required', 'string', 'max:255'],
             'meja.*.harga' => ['required', 'numeric', 'min:0'],
+            'meja.*.harga_member' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $this->assertMejaCountMatches($validated);
@@ -59,6 +60,7 @@ class TokoController extends Controller
                     'id_toko' => $toko->id,
                     'nama' => $row['nama'],
                     'harga' => $row['harga'],
+                    'harga_member' => $row['harga_member'] ?? null,
                     'status' => 'active',
                     'idc' => $uid,
                     'doc' => $now,
@@ -82,6 +84,7 @@ class TokoController extends Controller
             'meja' => ['required', 'array'],
             'meja.*.nama' => ['required', 'string', 'max:255'],
             'meja.*.harga' => ['required', 'numeric', 'min:0'],
+            'meja.*.harga_member' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $this->assertMejaCountMatches($validated);
@@ -106,11 +109,10 @@ class TokoController extends Controller
                     'id_toko' => $toko->id,
                     'nama' => $row['nama'],
                     'harga' => $row['harga'],
+                    'harga_member' => $row['harga_member'] ?? null,
                     'status' => 'active',
-                    // 'idc' => $uid,
                     'idc' => 1,
                     'doc' => $now,
-                    // 'idm' => $uid,
                     'idm' => 1,
                     'dom' => $now,
                 ]);
