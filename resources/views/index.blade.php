@@ -5,7 +5,39 @@
   $fmtRp = fn ($n) => number_format((float) $n, 0, ',', '.');
 @endphp
 
-<div class="app-content-header">
+<style>
+  .dashboard-page .small-box .inner {
+    overflow: hidden;
+  }
+  .dashboard-page .small-box .inner h3,
+  .dashboard-page .small-box .inner p,
+  .dashboard-page .small-box-footer {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dashboard-page .info-box {
+    min-width: 0;
+  }
+  .dashboard-page .info-box-content {
+    min-width: 0;
+    overflow: hidden;
+  }
+  .dashboard-page .info-box-text,
+  .dashboard-page .info-box-number {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dashboard-page .dashboard-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>
+
+<div class="app-content-header dashboard-page">
   <div class="container-fluid">
     <div class="row">
       <div class="col-sm-6">
@@ -20,7 +52,7 @@
   </div>
 </div>
 
-<div class="app-content">
+<div class="app-content dashboard-page">
   <div class="container-fluid">
     <div class="row">
       <div class="col-lg-3 col-6">
@@ -133,8 +165,9 @@
                 @php $st = $row->kelengkapanStatus(); @endphp
                 <li class="list-group-item">
                   <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div class="min-w-0">
-                      <div class="fw-semibold text-success">+ Rp {{ $fmtRp($row->total) }}
+                    <div class="min-w-0 flex-grow-1">
+                      <div class="fw-semibold text-success dashboard-ellipsis" title="+ Rp {{ $fmtRp($row->total) }}">
+                        + Rp {{ $fmtRp($row->total) }}
                         @if ($st === 'lengkap')
                           <span class="badge text-bg-success">Lengkap</span>
                         @elseif ($st === 'sebagian')
@@ -143,10 +176,9 @@
                           <span class="badge text-bg-warning text-dark">Belum</span>
                         @endif
                       </div>
-                      <div class="small text-secondary text-truncate">{{ $row->keterangan ?: '—' }}</div>
-                      <div class="small text-secondary">{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</div>
+                      <div class="small text-secondary dashboard-ellipsis" title="{{ $row->keterangan ?: '—' }}">{{ $row->keterangan ?: '—' }}</div>
+                      <div class="small text-secondary dashboard-ellipsis">{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</div>
                     </div>
-                    
                   </div>
                 </li>
               @empty

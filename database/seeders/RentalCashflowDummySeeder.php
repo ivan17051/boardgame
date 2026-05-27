@@ -55,6 +55,10 @@ class RentalCashflowDummySeeder extends Seeder
             $namaCustomer = self::CUSTOMER_NAMES[array_rand(self::CUSTOMER_NAMES)]
                 .' #'.str_pad((string) ($i + 1), 3, '0', STR_PAD_LEFT);
 
+            $metode = $this->randomMetode();
+            $jumlahBayar = $this->randomJumlahBayar($totalHarga, $metode);
+            $bukti = $this->randomBukti($metode);
+
             $rental = Rental::query()->create([
                 'id_meja' => $meja->id,
                 'nama_customer' => $namaCustomer,
@@ -63,6 +67,11 @@ class RentalCashflowDummySeeder extends Seeder
                 'total_durasi' => $durationMinutes,
                 'harga' => $hargaPerJam,
                 'total_harga' => $totalHarga,
+                'total' => $totalHarga,
+                'metode_pembayaran' => $metode,
+                'jumlah_bayar' => $jumlahBayar,
+                'bukti_transaksi' => $bukti,
+                'waktu_pembayaran' => $end,
                 'status' => 'completed',
                 'guest_token' => null,
             ]);
@@ -73,19 +82,13 @@ class RentalCashflowDummySeeder extends Seeder
                 ? "Sewa meja {$mejaNama} ({$tokoNama}) — {$namaCustomer}"
                 : "Sewa meja {$mejaNama} — {$namaCustomer}";
 
-            $metode = $this->randomMetode();
-            $jumlahBayar = $this->randomJumlahBayar($totalHarga, $metode);
-            $bukti = $this->randomBukti($metode);
-
             CashFlow::query()->create([
                 'id_rental' => $rental->id,
                 'tipe_transaksi' => 'income',
-                'metode_pembayaran' => $metode,
+                'kategori_pendapatan' => \App\Models\CashFlow::KATEGORI_SEWA_MEJA,
                 'total' => $totalHarga,
-                'jumlah_bayar' => $jumlahBayar,
                 'keterangan' => $keterangan,
                 'waktu_pembayaran' => $end,
-                'bukti_transaksi' => $bukti,
                 'idc' => 0,
                 'idm' => 0,
                 'doc' => $end,

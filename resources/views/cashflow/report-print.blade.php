@@ -185,7 +185,7 @@
             <td>{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</td>
             <td>{{ \App\Models\CashFlow::kategoriPendapatanLabel($row->kategori_pendapatan) }}</td>
             <td>{{ $row->keterangan ?: '—' }}</td>
-            <td>{{ \App\Models\CashFlow::metodePembayaranLabel($row->metode_pembayaran) }}</td>
+            <td>{{ \App\Models\CashFlow::metodePembayaranLabel($row->paymentMetode()) }}</td>
             <td class="text-end">{{ number_format((float) $row->total, 0, ',', '.') }}</td>
             <td class="text-end">{{ number_format($row->amountPaid(), 0, ',', '.') }}</td>
             <td>{{ $row->kelengkapanStatusLabel() }}</td>

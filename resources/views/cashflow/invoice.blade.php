@@ -1,9 +1,16 @@
+@php
+  $rental = $rental ?? null;
+  $cashFlows = $cash_flows ?? collect();
+  $fmtRp = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+  $firstCf = $cashFlows->first();
+  $waktuBayar = $firstCf ? $firstCf->waktu_pembayaran : ($rental->waktu_end ?? now());
+@endphp
 <!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kuitansi #{{ str_pad((string) $cashFlow->id, 6, '0', STR_PAD_LEFT) }} — {{ config('app.name', 'Omahjong') }}</title>
+  <title>Kuitansi sewa #{{ str_pad((string) $rental->id, 6, '0', STR_PAD_LEFT) }} — {{ config('app.name', 'Omahjong') }}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -13,11 +20,9 @@
       color: #1a1a1a;
       background: #fff;
       line-height: 1.45;
+      font-size: 0.95rem;
     }
-    .wrap {
-      max-width: 640px;
-      margin: 0 auto;
-    }
+    .wrap { max-width: 680px; margin: 0 auto; }
     .header {
       display: flex;
       align-items: center;
@@ -26,23 +31,9 @@
       border-bottom: 2px solid #006131;
       margin-bottom: 1.25rem;
     }
-    .logo {
-      width: 72px;
-      height: 72px;
-      object-fit: contain;
-      flex-shrink: 0;
-    }
-    .brand-meta h1 {
-      margin: 0 0 0.25rem;
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #006131;
-    }
-    .brand-meta p {
-      margin: 0;
-      font-size: 0.85rem;
-      color: #555;
-    }
+    .logo { width: 72px; height: 72px; object-fit: contain; flex-shrink: 0; }
+    .brand-meta h1 { margin: 0 0 0.25rem; font-size: 1.25rem; font-weight: 700; color: #006131; }
+    .brand-meta p { margin: 0; font-size: 0.85rem; color: #555; }
     .doc-title {
       text-align: center;
       font-size: 1.1rem;
@@ -54,20 +45,42 @@
     table.meta {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 1rem;
-      font-size: 0.95rem;
+      margin-bottom: 1.25rem;
     }
     table.meta th,
     table.meta td {
-      padding: 0.45rem 0;
+      padding: 0.4rem 0;
       vertical-align: top;
       text-align: left;
     }
     table.meta th {
-      width: 42%;
+      width: 38%;
       color: #555;
       font-weight: 600;
     }
+    table.lines {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+    table.lines th,
+    table.lines td {
+      border: 1px solid #ccc;
+      padding: 0.5rem 0.6rem;
+      vertical-align: top;
+    }
+    table.lines th {
+      background: #f1f3f5;
+      font-weight: 600;
+      text-align: left;
+    }
+    table.lines tfoot th,
+    table.lines tfoot td {
+      background: #f8f9fa;
+      font-weight: 600;
+    }
+    .text-end { text-align: right; }
     .amount-box {
       background: #f4fbf7;
       border: 1px solid #c5e4d4;
@@ -75,15 +88,19 @@
       padding: 1rem 1.25rem;
       margin: 1.25rem 0;
     }
-    .amount-box .label {
-      font-size: 0.8rem;
-      color: #333;
+    .amount-box .row-line {
+      display: flex;
+      justify-content: space-between;
       margin-bottom: 0.35rem;
+      font-size: 0.9rem;
     }
-    .amount-box .value {
+    .amount-box .grand {
       font-size: 1.35rem;
       font-weight: 700;
       color: #006131;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid #c5e4d4;
     }
     .footer {
       margin-top: 2rem;
@@ -93,10 +110,7 @@
       color: #666;
       text-align: center;
     }
-    .actions {
-      margin-top: 1.5rem;
-      text-align: center;
-    }
+    .actions { margin-top: 1.5rem; text-align: center; }
     .btn-print {
       display: inline-block;
       padding: 0.5rem 1.25rem;
@@ -106,62 +120,84 @@
       border-radius: 6px;
       font-size: 0.95rem;
       cursor: pointer;
-      text-decoration: none;
     }
-    .btn-print:hover {
-      background: #004d27;
+    .btn-print:hover { background: #004d27; }
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #006131;
+      margin: 1.25rem 0 0.5rem;
     }
     @media print {
       body { padding: 0.5rem; }
       .no-print { display: none !important; }
       .wrap { max-width: none; }
-      .header { border-bottom-color: #000; }
     }
-    @page {
-      margin: 12mm;
-    }
+    @page { margin: 12mm; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header class="header">
-      <img
-        class="logo"
-        src="{{ asset('public/assets/img/logo.png') }}"
-        alt="Logo {{ config('app.name', 'Omahjong') }}"
-        width="72"
-        height="72"
-      />
+      <img class="logo" src="{{ asset('public/assets/img/logo.png') }}" alt="Logo" width="72" height="72" />
       <div class="brand-meta">
         <h1>{{ config('app.name', 'Omahjong') }}</h1>
-        <p>Kuitansi / Invoice pembayaran sewa meja</p>
+        <p>Kuitansi pembayaran sewa meja</p>
       </div>
     </header>
 
-    <p class="doc-title">Kuitansi pembayaran</p>
+    <p class="doc-title">Kuitansi / Invoice</p>
 
     <table class="meta">
       <tr>
-        <th>No. kuitansi</th>
-        <td>INV-{{ str_pad((string) $cashFlow->id, 6, '0', STR_PAD_LEFT) }}</td>
+        <th>No. transaksi</th>
+        <td>RNT-{{ str_pad((string) $rental->id, 6, '0', STR_PAD_LEFT) }}</td>
       </tr>
       <tr>
-        <th>Tanggal</th>
-        <td>{{ $cashFlow->waktu_pembayaran->translatedFormat('d F Y H:i') }}</td>
+        <th>Tanggal bayar</th>
+        <td>{{ $waktuBayar->translatedFormat('d F Y H:i') }}</td>
       </tr>
-      @if ($cashFlow->rental)
+      <tr>
+        <th>Meja</th>
+        <td>
+          {{ $rental->meja->nama ?? '—' }}
+          @if ($rental->meja && $rental->meja->toko)
+            ({{ $rental->meja->toko->nama }})
+          @endif
+        </td>
+      </tr>
+      <tr>
+        <th>Customer</th>
+        <td>{{ $rental->nama_customer }}</td>
+      </tr>
+      <tr>
+        <th>Tipe customer</th>
+        <td>{{ $rental->isMember() ? 'Member' : 'Non-Member' }}</td>
+      </tr>
+      @if ($rental->waktu_start && $rental->waktu_end)
         <tr>
-          <th>Meja</th>
-          <td>{{ $cashFlow->rental->meja->nama ?? '—' }}@if ($cashFlow->rental->meja && $cashFlow->rental->meja->toko) ({{ $cashFlow->rental->meja->toko->nama }})@endif</td>
+          <th>Periode sewa</th>
+          <td>
+            {{ $rental->waktu_start->format('d/m/Y H:i') }}
+            — {{ $rental->waktu_end->format('d/m/Y H:i') }}
+          </td>
         </tr>
+      @endif
+      @if ($durasi_hms ?? null)
         <tr>
-          <th>Customer</th>
-          <td>{{ $cashFlow->rental->nama_customer }}</td>
+          <th>Durasi</th>
+          <td>{{ $durasi_hms }} ({{ number_format($billed_hours, 2, ',', '.') }} jam)</td>
         </tr>
       @endif
       <tr>
+        <th>Tarif / jam</th>
+        <td>{{ $fmtRp($rental->harga) }}</td>
+      </tr>
+      <tr>
         <th>Metode pembayaran</th>
-        <td>{{ \App\Models\CashFlow::metodePembayaranLabel($cashFlow->metode_pembayaran) }}</td>
+        <td>{{ $metode_label }}</td>
       </tr>
       <tr>
         <th>Status</th>
@@ -169,22 +205,72 @@
       </tr>
     </table>
 
+    <p class="section-title">Rincian tagihan</p>
+    <table class="lines">
+      <thead>
+        <tr>
+          <th>Uraian</th>
+          <th class="text-end" style="width:56px">Qty</th>
+          <th class="text-end" style="width:110px">Harga</th>
+          <th class="text-end" style="width:120px">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            Sewa meja
+            @if ($billed_hours > 0)
+              <span class="text-secondary">({{ number_format($billed_hours, 2, ',', '.') }} jam × {{ $fmtRp($rental->harga) }}/jam)</span>
+            @endif
+          </td>
+          <td class="text-end">1</td>
+          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+        </tr>
+        @foreach ($rental->additionalItems as $line)
+          <tr>
+            <td>Additional — {{ $line->nama }}</td>
+            <td class="text-end">{{ $line->qty }}</td>
+            <td class="text-end font-monospace">{{ $fmtRp($line->harga) }}</td>
+            <td class="text-end font-monospace">{{ $fmtRp($line->subtotal) }}</td>
+          </tr>
+        @endforeach
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="3" class="text-end">Subtotal sewa meja</th>
+          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+        </tr>
+        @if ($total_harga_additional > 0)
+          <tr>
+            <th colspan="3" class="text-end">Subtotal item tambahan (F&amp;B)</th>
+            <td class="text-end font-monospace">{{ $fmtRp($total_harga_additional) }}</td>
+          </tr>
+        @endif
+        <tr>
+          <th colspan="3" class="text-end">Total tagihan</th>
+          <td class="text-end font-monospace">{{ $fmtRp($total_tagihan) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+
     <div class="amount-box">
-      @if ($cashFlow->jumlah_bayar !== null && (float) $cashFlow->jumlah_bayar !== (float) $cashFlow->total)
-        <div class="label">Tagihan sewa</div>
-        <div class="value" style="font-size:1rem;margin-bottom:0.5rem;">Rp {{ number_format((float) $cashFlow->total, 0, ',', '.') }}</div>
-      @endif
-      <div class="label">Jumlah dibayar</div>
-      <div class="value">Rp {{ number_format($cashFlow->amountPaid(), 0, ',', '.') }}</div>
+      <div class="row-line">
+        <span>Total tagihan</span>
+        <span class="font-monospace">{{ $fmtRp($total_tagihan) }}</span>
+      </div>
+      <div class="grand d-flex justify-content-between">
+        <span>Jumlah dibayar</span>
+        <span class="font-monospace">{{ $fmtRp($total_dibayar) }}</span>
+      </div>
     </div>
 
-    <p style="font-size:0.9rem;color:#444;margin:0;">
-      Dokumen ini diterbitkan secara elektronik setelah pembayaran dan bukti transaksi dilengkapi di sistem arus kas.
+    <p style="font-size:0.85rem;color:#444;margin:0;">
+      Dokumen ini diterbitkan secara elektronik setelah pembayaran lengkap di sistem.
     </p>
 
-    <div class="footer">
-      Terima kasih atas kunjungan Anda.
-    </div>
+    <div class="footer">Terima kasih atas kunjungan Anda.</div>
 
     <div class="actions no-print">
       <button type="button" class="btn-print" onclick="window.print()">Cetak / Simpan PDF</button>

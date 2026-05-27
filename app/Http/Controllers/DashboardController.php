@@ -31,14 +31,9 @@ class DashboardController extends Controller
             'income_month' => (float) (clone $cashflowBase)
                 ->where('waktu_pembayaran', '>=', $monthStart)
                 ->sum('total'),
-            'pending_payment' => (clone $cashflowBase)
-                ->where(function ($q) {
-                    $q->whereNull('metode_pembayaran')
-                        ->orWhere(function ($q2) {
-                            $q2->where('metode_pembayaran', '!=', 'tunai')
-                                ->whereNull('bukti_transaksi');
-                        });
-                })
+            'pending_payment' => (clone $rentalBase)
+                ->where('status', 'completed')
+                ->incompleteKelengkapan()
                 ->count(),
             'meja_rented' => (clone $mejaBase)->where('status', 'rented')->count(),
             'meja_available' => (clone $mejaBase)->where('status', 'active')->count(),

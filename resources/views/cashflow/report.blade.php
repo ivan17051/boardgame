@@ -140,7 +140,7 @@
                   <td class="text-nowrap small">{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</td>
                   <td class="small">{{ \App\Models\CashFlow::kategoriPendapatanLabel($row->kategori_pendapatan) }}</td>
                   <td class="text-break small">{{ $row->keterangan ?: '—' }}</td>
-                  <td class="small">{{ \App\Models\CashFlow::metodePembayaranLabel($row->metode_pembayaran) }}</td>
+                  <td class="small">{{ \App\Models\CashFlow::metodePembayaranLabel($row->paymentMetode()) }}</td>
                   <td class="text-end font-monospace small">{{ $fmtRp($row->total) }}</td>
                   <td class="text-end font-monospace small text-success">{{ $fmtRp($row->amountPaid()) }}</td>
                   <td>

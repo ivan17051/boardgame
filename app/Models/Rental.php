@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -26,16 +27,24 @@ class Rental extends Model
         'total_harga_additional',
         'status',
         'guest_token',
+        'metode_pembayaran',
+        'total',
+        'jumlah_bayar',
+        'bukti_transaksi',
+        'waktu_pembayaran',
     ];
 
     protected $casts = [
         'waktu_start' => 'datetime',
         'waktu_end' => 'datetime',
+        'waktu_pembayaran' => 'datetime',
         'total_durasi' => 'decimal:2',
         'harga' => 'decimal:3',
         'total_harga' => 'decimal:3',
         'total_harga_sewa' => 'decimal:3',
         'total_harga_additional' => 'decimal:3',
+        'total' => 'decimal:3',
+        'jumlah_bayar' => 'decimal:3',
     ];
 
     public function meja(): BelongsTo
@@ -66,5 +75,72 @@ class Rental extends Model
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function billTotal(): float
+    {
+        return (float) ($this->total ?? $this->total_harga ?? 0);
+    }
+
+    public function amountPaid(): float
+    {
+        return (float) ($this->jumlah_bayar ?? $this->billTotal());
+    }
+
+    public function requiresBuktiTransaksi(): bool
+    {
+        return $this->metode_pembayaran !== 'tunai';
+    }
+
+    /**
+     * @return string belum|sebagian|lengkap
+     */
+    public function kelengkapanStatus(): string
+    {
+        $hasMetode = ! empty($this->metode_pembayaran);
+        $hasBukti = ! empty($this->bukti_transaksi);
+        $buktiRequired = $hasMetode && $this->requiresBuktiTransaksi();
+
+        if ($hasMetode && (! $buktiRequired || $hasBukti)) {
+            return 'lengkap';
+        }
+
+        if ($hasMetode || $hasBukti) {
+            return 'sebagian';
+        }
+
+        return 'belum';
+    }
+
+    public function kelengkapanStatusLabel(): string
+    {
+        switch ($this->kelengkapanStatus()) {
+            case 'lengkap':
+                return 'Lengkap';
+            case 'sebagian':
+                return 'Sebagian';
+            default:
+                return 'Belum lengkap';
+        }
+    }
+
+    public function buktiUrl(): ?string
+    {
+        if (! $this->bukti_transaksi) {
+            return null;
+        }
+
+        return route('rental.bukti', $this);
+    }
+
+    public function scopeIncompleteKelengkapan(Builder $query): Builder
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('metode_pembayaran')
+                ->orWhere(function ($q2) {
+                    $q2->where('metode_pembayaran', '!=', 'tunai')
+                        ->whereNull('bukti_transaksi');
+                });
+        });
     }
 }

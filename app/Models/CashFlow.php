@@ -82,6 +82,10 @@ class CashFlow extends Model
 
     public function buktiUrl(): ?string
     {
+        if ($this->id_rental && $this->rental && $this->rental->bukti_transaksi) {
+            return $this->rental->buktiUrl();
+        }
+
         if (! $this->bukti_transaksi) {
             return null;
         }
@@ -92,12 +96,30 @@ class CashFlow extends Model
     public function scopeIncompleteKelengkapan(Builder $query): Builder
     {
         return $query->where(function ($q) {
-            $q->whereNull('metode_pembayaran')
+            $q->whereNotNull('id_rental')
+                ->whereHas('rental', function ($r) {
+                    $r->incompleteKelengkapan();
+                })
                 ->orWhere(function ($q2) {
-                    $q2->where('metode_pembayaran', '!=', 'tunai')
-                        ->whereNull('bukti_transaksi');
+                    $q2->whereNull('id_rental')
+                        ->where(function ($q3) {
+                            $q3->whereNull('metode_pembayaran')
+                                ->orWhere(function ($q4) {
+                                    $q4->where('metode_pembayaran', '!=', 'tunai')
+                                        ->whereNull('bukti_transaksi');
+                                });
+                        });
                 });
         });
+    }
+
+    protected function paymentRental(): ?Rental
+    {
+        if (! $this->id_rental) {
+            return null;
+        }
+
+        return $this->relationLoaded('rental') ? $this->rental : $this->rental()->first();
     }
 
     public function requiresBuktiTransaksi(): bool
@@ -110,6 +132,11 @@ class CashFlow extends Model
      */
     public function kelengkapanStatus(): string
     {
+        $rental = $this->paymentRental();
+        if ($rental) {
+            return $rental->kelengkapanStatus();
+        }
+
         $hasMetode = ! empty($this->metode_pembayaran);
         $hasBukti = ! empty($this->bukti_transaksi);
         $buktiRequired = $this->requiresBuktiTransaksi();
@@ -127,7 +154,25 @@ class CashFlow extends Model
 
     public function amountPaid(): float
     {
-        return (float) ($this->jumlah_bayar ?? $this->total);
+        return (float) $this->total;
+    }
+
+    public function paymentMetode(): ?string
+    {
+        $rental = $this->paymentRental();
+
+        return $rental ? $rental->metode_pembayaran : $this->metode_pembayaran;
+    }
+
+    public function paymentJumlahBayar(): ?float
+    {
+        $rental = $this->paymentRental();
+
+        if ($rental) {
+            return $rental->jumlah_bayar !== null ? (float) $rental->jumlah_bayar : null;
+        }
+
+        return $this->jumlah_bayar !== null ? (float) $this->jumlah_bayar : null;
     }
 
     public function kelengkapanStatusLabel(): string

@@ -88,15 +88,17 @@
               @forelse ($entries as $row)
                 @php
                   $status = $row->kelengkapanStatus();
+                  $tagihanModal = $row->rental ? (float) $row->rental->billTotal() : (float) $row->total;
+                  $jumlahBayarModal = $row->paymentJumlahBayar();
                 @endphp
                 <tr
                   data-cash-flow-id="{{ $row->id }}"
                   data-keterangan="{{ e($row->keterangan) }}"
                   data-tanggal="{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}"
-                  data-total="{{ number_format((float) $row->total, 0, ',', '.') }}"
-                  data-total-raw="{{ (float) $row->total }}"
-                  data-jumlah-bayar="{{ $row->jumlah_bayar !== null ? (float) $row->jumlah_bayar : '' }}"
-                  data-metode="{{ $row->metode_pembayaran ?? '' }}"
+                  data-total="{{ number_format($tagihanModal, 0, ',', '.') }}"
+                  data-total-raw="{{ $tagihanModal }}"
+                  data-jumlah-bayar="{{ $jumlahBayarModal !== null ? $jumlahBayarModal : '' }}"
+                  data-metode="{{ $row->paymentMetode() ?? '' }}"
                   data-bukti-url="{{ $row->buktiUrl() ?? '' }}"
                   data-status="{{ $status }}"
                 >
@@ -144,14 +146,14 @@
                         >
                           <i class="bi bi-pencil-square"></i>
                         </button>
-                        @if ($status === 'lengkap')
+                        @if ($row->id_rental && $row->rental && \App\Support\RentalInvoice::canIssue($row->rental) && $row->kategori_pendapatan !== \App\Models\CashFlow::KATEGORI_ADDITIONAL_FB)
                           <a
-                            href="{{ route('cashflow.invoice', $row) }}"
+                            href="{{ route('rental.invoice', $row->rental) }}"
                             class="btn btn-outline-secondary btn-sm"
                             target="_blank"
                             rel="noopener noreferrer"
                             data-no-page-loader
-                            title="Cetak kwitansi"
+                            title="Cetak kwitansi sewa"
                           >
                             <i class="bi bi-printer"></i>
                           </a>

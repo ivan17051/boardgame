@@ -11,9 +11,15 @@
     >
       
       <li class="nav-item">
-        <a href="{{ route('rental.index') }}" class="nav-link {{ request()->routeIs('rental.*') ? 'active' : '' }}">
+        <a href="{{ route('rental.index') }}" class="nav-link {{ request()->routeIs('rental.index') ? 'active' : '' }}">
           <i class="nav-icon bi bi-grid-3x3-gap-fill"></i>
           <p>Kasir / Meja</p>
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="{{ route('rental.manual.index') }}" class="nav-link {{ request()->routeIs('rental.manual.*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-pencil-square"></i>
+          <p>Input sewa manual</p>
         </a>
       </li>
       <li class="nav-item">
@@ -23,6 +29,7 @@
         </a>
       </li>
 
+      @if (auth()->check() && auth()->user()->isAdmin())
       <li class="nav-header">DATA MASTER</li>
       <li class="nav-item">
         <a href="{{ route('users.index') }}" class="nav-link {{ request()->routeIs('users.*') ? 'active' : '' }}">
@@ -42,8 +49,15 @@
           <p>Item tambahan</p>
         </a>
       </li>
-      
+      @endif
+
       <li class="nav-header">TRANSAKSI</li>
+      <li class="nav-item">
+        <a href="{{ route('rental.history.index') }}" class="nav-link {{ request()->routeIs('rental.history.*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-table"></i>
+          <p>Data Sewa</p>
+        </a>
+      </li>
       <li class="nav-item">
         <a href="{{ route('cashflow.index') }}" class="nav-link {{ request()->routeIs('cashflow.*') && ! request()->routeIs('cashflow.report') ? 'active' : '' }}">
           <i class="nav-icon bi bi-cash-stack"></i>

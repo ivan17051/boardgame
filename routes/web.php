@@ -5,7 +5,9 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GuestRentalController;
+use App\Http\Controllers\ManualRentalController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\RentalHistoryController;
 use App\Http\Controllers\TokoController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -66,24 +68,36 @@ Route::post('/logout', [LoginController::class, 'destroy'])
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    Route::get('/users', [UserController::class, 'index'])->name('users.index');
-    Route::post('/users', [UserController::class, 'store'])->name('users.store');
-    Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
-    Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+    Route::middleware('admin')->group(function () {
+        Route::get('/users', [UserController::class, 'index'])->name('users.index');
+        Route::post('/users', [UserController::class, 'store'])->name('users.store');
+        Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
-    Route::get('/toko', [TokoController::class, 'index'])->name('toko.index');
-    Route::post('/toko', [TokoController::class, 'store'])->name('toko.store');
-    Route::put('/toko/{toko}', [TokoController::class, 'update'])->name('toko.update');
-    Route::delete('/toko/{toko}', [TokoController::class, 'destroy'])->name('toko.destroy');
+        Route::get('/toko', [TokoController::class, 'index'])->name('toko.index');
+        Route::post('/toko', [TokoController::class, 'store'])->name('toko.store');
+        Route::put('/toko/{toko}', [TokoController::class, 'update'])->name('toko.update');
+        Route::delete('/toko/{toko}', [TokoController::class, 'destroy'])->name('toko.destroy');
+
+        Route::get('/additional-items', [AdditionalItemController::class, 'index'])->name('additional-items.index');
+        Route::post('/additional-items', [AdditionalItemController::class, 'store'])->name('additional-items.store');
+        Route::put('/additional-items/{additionalItem}', [AdditionalItemController::class, 'update'])->name('additional-items.update');
+        Route::delete('/additional-items/{additionalItem}', [AdditionalItemController::class, 'destroy'])->name('additional-items.destroy');
+    });
 
     Route::get('/sewa', [RentalController::class, 'index'])->name('rental.index');
     Route::post('/sewa', [RentalController::class, 'store'])->name('rental.store');
+    Route::get('/sewa/manual', [ManualRentalController::class, 'index'])->name('rental.manual.index');
+    Route::post('/sewa/manual', [ManualRentalController::class, 'store'])->name('rental.manual.store');
+    Route::get('/sewa/riwayat', [RentalHistoryController::class, 'index'])->name('rental.history.index');
+    Route::get('/sewa/riwayat/data', [RentalHistoryController::class, 'data'])->name('rental.history.data');
+    Route::get('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'show'])->name('rental.history.show');
+    Route::put('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'update'])->name('rental.history.update');
+    Route::delete('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'destroy'])->name('rental.history.destroy');
+    Route::get('/sewa/{rental}/invoice', [RentalController::class, 'invoice'])->name('rental.invoice');
+    Route::get('/sewa/{rental}/bukti', [RentalController::class, 'showBukti'])->name('rental.bukti');
     Route::match(['get', 'post'], '/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
 
-    Route::get('/additional-items', [AdditionalItemController::class, 'index'])->name('additional-items.index');
-    Route::post('/additional-items', [AdditionalItemController::class, 'store'])->name('additional-items.store');
-    Route::put('/additional-items/{additionalItem}', [AdditionalItemController::class, 'update'])->name('additional-items.update');
-    Route::delete('/additional-items/{additionalItem}', [AdditionalItemController::class, 'destroy'])->name('additional-items.destroy');
     Route::post('/sewa/{rental}/checkout', [RentalController::class, 'checkout'])->name('rental.checkout');
 
     Route::get('/cashflow/laporan', [CashFlowController::class, 'report'])->name('cashflow.report');

@@ -9,6 +9,7 @@ use App\Models\Rental;
 use App\Models\RentalAdditionalItem;
 use App\Models\Toko;
 use App\Support\RentalCheckout;
+use App\Support\RentalInvoice;
 use App\Support\RentalPayment;
 use App\Support\TokoScope;
 use Carbon\CarbonInterface;
@@ -41,6 +42,19 @@ class RentalController extends Controller
         }
 
         return view('rental.index', compact('tokos', 'additionalItems'));
+    }
+
+    public function invoice(Rental $rental)
+    {
+        TokoScope::authorizeRental($rental);
+
+        if (! RentalInvoice::canIssue($rental)) {
+            abort(404);
+        }
+
+        $invoice = RentalInvoice::build($rental);
+
+        return view('cashflow.invoice', $invoice);
     }
 
     public function store(Request $request): JsonResponse
@@ -158,6 +172,7 @@ class RentalController extends Controller
                 'total_harga_sewa' => $calc['total_harga_sewa'],
                 'total_harga_additional' => $calc['total_harga_additional'],
                 'total_harga' => $calc['total_harga'],
+                'total' => $calc['total_harga'],
                 'status' => 'completed',
             ]);
 
@@ -179,22 +194,22 @@ class RentalController extends Controller
 
             $this->createIncomeCashFlows($locked, $endAt, $calc);
 
-            $flows = RentalPayment::applyToRental(
+            RentalPayment::saveOnRental(
                 $locked,
                 $paymentPayload['metode_pembayaran'],
                 $paymentPayload['jumlah_bayar'],
-                $paymentPayload['bukti']
+                $paymentPayload['bukti'],
+                $endAt
             );
 
             return [
                 'rental_id' => $locked->id,
-                'cash_flows' => $flows,
             ];
         });
 
         return response()->json([
             'message' => 'Checkout & pembayaran tersimpan. Meja tersedia kembali.',
-            'invoice_url' => $this->primaryInvoiceUrl($result['cash_flows']),
+            'invoice_url' => $this->primaryInvoiceUrl($result['rental_id']),
         ]);
     }
 
@@ -231,19 +246,42 @@ class RentalController extends Controller
         return $validated;
     }
 
-    /**
-     * @param  \Illuminate\Support\Collection<int, CashFlow>  $flows
-     */
-    private function primaryInvoiceUrl($flows): ?string
+    private function primaryInvoiceUrl(?int $rentalId): ?string
     {
-        $primary = $flows->firstWhere('kategori_pendapatan', CashFlow::KATEGORI_SEWA_MEJA)
-            ?? $flows->first();
-
-        if (! $primary || $primary->kelengkapanStatus() !== 'lengkap') {
+        if (! $rentalId) {
             return null;
         }
 
-        return route('cashflow.invoice', $primary);
+        $rental = Rental::query()->find($rentalId);
+
+        if (! $rental || ! RentalInvoice::canIssue($rental)) {
+            return null;
+        }
+
+        return route('rental.invoice', $rental);
+    }
+
+    public function showBukti(Rental $rental)
+    {
+        if (empty($rental->bukti_transaksi)) {
+            abort(404);
+        }
+
+        TokoScope::authorizeRental($rental);
+
+        $disk = \Illuminate\Support\Facades\Storage::disk('public');
+
+        if (! $disk->exists($rental->bukti_transaksi)) {
+            abort(404);
+        }
+
+        $path = $disk->path($rental->bukti_transaksi);
+        $mime = $disk->mimeType($rental->bukti_transaksi) ?: 'application/octet-stream';
+
+        return response()->file($path, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="'.basename($rental->bukti_transaksi).'"',
+        ]);
     }
 
     /**
@@ -298,7 +336,6 @@ class RentalController extends Controller
             'kategori_pendapatan' => CashFlow::KATEGORI_SEWA_MEJA,
             'total' => $calc['total_harga_sewa'],
             'keterangan' => $deskripsiSewa,
-            'metode_pembayaran' => null,
             'waktu_pembayaran' => $now,
             'idc' => $uid,
             'idm' => $uid,
@@ -313,7 +350,6 @@ class RentalController extends Controller
                 'kategori_pendapatan' => CashFlow::KATEGORI_ADDITIONAL_FB,
                 'total' => $calc['total_harga_additional'],
                 'keterangan' => "Additional Item (F&B) — {$rental->nama_customer} · {$mejaNama}",
-                'metode_pembayaran' => null,
                 'waktu_pembayaran' => $now,
                 'idc' => $uid,
                 'idm' => $uid,

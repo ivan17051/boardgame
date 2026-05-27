@@ -65,4 +65,9 @@ class User extends Authenticatable
     {
         return (int) $this->id_toko === 0;
     }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
 }

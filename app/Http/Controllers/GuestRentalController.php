@@ -159,6 +159,7 @@ class GuestRentalController extends Controller
                 'total_harga_sewa' => $calc['total_harga_sewa'],
                 'total_harga_additional' => $calc['total_harga_additional'] ?? 0,
                 'total_harga' => $calc['total_harga'],
+                'total' => $calc['total_harga'],
                 'status' => 'completed',
                 'guest_token' => null,
             ]);
@@ -184,7 +185,6 @@ class GuestRentalController extends Controller
                     'tipe_transaksi' => 'income',
                     'total' => $calc['total_harga_sewa'],
                     'keterangan' => $deskripsi,
-                    'metode_pembayaran' => null,
                     'waktu_pembayaran' => $endAt,
                     'idc' => 0,
                     'idm' => 0,

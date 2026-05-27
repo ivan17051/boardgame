@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CashFlow;
+use App\Models\Rental;
+use App\Support\RentalInvoice;
+use App\Support\RentalPayment;
 use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -58,26 +61,35 @@ class CashFlowController extends Controller
         $incomeRows = $entries->filter(fn (CashFlow $row) => $row->isIncome());
         $expenseRows = $entries->filter(fn (CashFlow $row) => ! $row->isIncome());
 
+        $countedRentalPayments = [];
+        $totalIncomeBayar = 0.0;
+        foreach ($incomeRows as $row) {
+            if ($row->id_rental) {
+                if (isset($countedRentalPayments[$row->id_rental])) {
+                    continue;
+                }
+                $countedRentalPayments[$row->id_rental] = true;
+                $rental = $row->rental;
+                $totalIncomeBayar += $rental ? $rental->amountPaid() : (float) $row->total;
+            } else {
+                $totalIncomeBayar += (float) ($row->jumlah_bayar ?? $row->total);
+            }
+        }
+
         $summary = [
             'total_income_tagihan' => (float) $incomeRows->sum(fn (CashFlow $r) => (float) $r->total),
-            'total_income_bayar' => (float) $incomeRows->sum(fn (CashFlow $r) => $r->amountPaid()),
+            'total_income_bayar' => $totalIncomeBayar,
             'total_sewa_meja' => (float) $incomeRows
                 ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_SEWA_MEJA)
-                ->sum(fn (CashFlow $r) => $r->amountPaid()),
+                ->sum(fn (CashFlow $r) => (float) $r->total),
             'total_additional_fb' => (float) $incomeRows
                 ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_ADDITIONAL_FB)
-                ->sum(fn (CashFlow $r) => $r->amountPaid()),
+                ->sum(fn (CashFlow $r) => (float) $r->total),
             'total_expense' => (float) $expenseRows->sum(fn (CashFlow $r) => (float) $r->total),
             'count_income' => $incomeRows->count(),
             'count_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() === 'lengkap')->count(),
             'count_belum_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() !== 'lengkap')->count(),
-            'by_metode' => $incomeRows
-                ->filter(fn (CashFlow $r) => ! empty($r->metode_pembayaran))
-                ->groupBy('metode_pembayaran')
-                ->map(fn ($group) => [
-                    'count' => $group->count(),
-                    'total' => (float) $group->sum(fn (CashFlow $r) => $r->amountPaid()),
-                ]),
+            'by_metode' => $this->incomeByMetode($incomeRows),
         ];
 
         $summary['net'] = $summary['total_income_bayar'] - $summary['total_expense'];
@@ -91,6 +103,42 @@ class CashFlowController extends Controller
         return view('cashflow.report', $data);
     }
 
+    /**
+     * @param  \Illuminate\Support\Collection<int, CashFlow>  $incomeRows
+     * @return \Illuminate\Support\Collection<string, array{count: int, total: float}>
+     */
+    private function incomeByMetode($incomeRows)
+    {
+        $counted = [];
+        $groups = [];
+
+        foreach ($incomeRows as $row) {
+            if ($row->id_rental) {
+                if (isset($counted[$row->id_rental])) {
+                    continue;
+                }
+                $counted[$row->id_rental] = true;
+                $metode = $row->rental ? $row->rental->metode_pembayaran : null;
+                $paid = $row->rental ? $row->rental->amountPaid() : (float) $row->total;
+            } else {
+                $metode = $row->metode_pembayaran;
+                $paid = (float) ($row->jumlah_bayar ?? $row->total);
+            }
+
+            if (empty($metode)) {
+                continue;
+            }
+
+            if (! isset($groups[$metode])) {
+                $groups[$metode] = ['count' => 0, 'total' => 0.0];
+            }
+            $groups[$metode]['count']++;
+            $groups[$metode]['total'] += $paid;
+        }
+
+        return collect($groups);
+    }
+
     public function invoice(CashFlow $cashFlow)
     {
         if (! $cashFlow->isIncome() || $cashFlow->kelengkapanStatus() !== 'lengkap') {
@@ -99,9 +147,18 @@ class CashFlowController extends Controller
 
         TokoScope::authorizeCashFlow($cashFlow);
 
-        $cashFlow->load(['rental.meja.toko']);
+        if (! $cashFlow->id_rental) {
+            abort(404);
+        }
 
-        return view('cashflow.invoice', compact('cashFlow'));
+        $rental = Rental::query()->findOrFail($cashFlow->id_rental);
+        TokoScope::authorizeRental($rental);
+
+        if (! RentalInvoice::canIssue($rental)) {
+            abort(404);
+        }
+
+        return view('cashflow.invoice', RentalInvoice::build($rental));
     }
 
     public function updatePaymentMethod(Request $request, CashFlow $cashFlow): JsonResponse
@@ -117,6 +174,23 @@ class CashFlowController extends Controller
             'jumlah_bayar' => ['required', 'numeric', 'min:0'],
         ]);
 
+        if ($cashFlow->id_rental) {
+            $rental = Rental::query()->findOrFail($cashFlow->id_rental);
+            TokoScope::authorizeRental($rental);
+
+            RentalPayment::saveOnRental(
+                $rental,
+                $validated['metode_pembayaran'],
+                (float) $validated['jumlah_bayar'],
+                null,
+                $rental->waktu_pembayaran ?? $cashFlow->waktu_pembayaran
+            );
+
+            $rental->refresh();
+
+            return response()->json($this->paymentJsonFromRental($rental, 'Data pembayaran disimpan.'));
+        }
+
         $now = now();
         $uid = auth()->id();
 
@@ -129,38 +203,25 @@ class CashFlowController extends Controller
 
         $cashFlow->refresh();
 
-        return response()->json([
-            'message' => 'Data pembayaran disimpan.',
-            'metode_pembayaran' => $cashFlow->metode_pembayaran,
-            'metode_pembayaran_label' => CashFlow::metodePembayaranLabel($cashFlow->metode_pembayaran),
-            'jumlah_bayar' => (float) $cashFlow->jumlah_bayar,
-            'jumlah_bayar_formatted' => number_format((float) $cashFlow->jumlah_bayar, 0, ',', '.'),
-            'status' => $cashFlow->kelengkapanStatus(),
-            'status_label' => $cashFlow->kelengkapanStatusLabel(),
-        ]);
+        return response()->json($this->paymentJsonFromCashFlow($cashFlow, 'Data pembayaran disimpan.'));
     }
 
     public function showBukti(CashFlow $cashFlow): BinaryFileResponse
     {
+        TokoScope::authorizeCashFlow($cashFlow);
+
+        if ($cashFlow->id_rental) {
+            $rental = Rental::query()->findOrFail($cashFlow->id_rental);
+            TokoScope::authorizeRental($rental);
+
+            return app(RentalController::class)->showBukti($rental);
+        }
+
         if (empty($cashFlow->bukti_transaksi)) {
             abort(404);
         }
 
-        TokoScope::authorizeCashFlow($cashFlow);
-
-        $disk = Storage::disk('public');
-
-        if (! $disk->exists($cashFlow->bukti_transaksi)) {
-            abort(404);
-        }
-
-        $path = $disk->path($cashFlow->bukti_transaksi);
-        $mime = $disk->mimeType($cashFlow->bukti_transaksi) ?: 'application/octet-stream';
-
-        return response()->file($path, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="'.basename($cashFlow->bukti_transaksi).'"',
-        ]);
+        return $this->serveBuktiFile($cashFlow->bukti_transaksi);
     }
 
     public function uploadBukti(Request $request, CashFlow $cashFlow): JsonResponse
@@ -170,6 +231,19 @@ class CashFlowController extends Controller
         $validated = $request->validate([
             'bukti' => ['required', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ]);
+
+        if ($cashFlow->id_rental) {
+            $rental = Rental::query()->findOrFail($cashFlow->id_rental);
+            TokoScope::authorizeRental($rental);
+
+            $path = RentalPayment::storeBukti($validated['bukti'], $rental->bukti_transaksi);
+            $rental->update([
+                'bukti_transaksi' => $path,
+            ]);
+            $rental->refresh();
+
+            return response()->json($this->paymentJsonFromRental($rental, 'Bukti transaksi berhasil diunggah.'));
+        }
 
         $disk = Storage::disk('public');
         if ($cashFlow->bukti_transaksi && $disk->exists($cashFlow->bukti_transaksi)) {
@@ -187,11 +261,57 @@ class CashFlowController extends Controller
 
         $cashFlow->refresh();
 
-        return response()->json([
-            'message' => 'Bukti transaksi berhasil diunggah.',
+        return response()->json($this->paymentJsonFromCashFlow($cashFlow, 'Bukti transaksi berhasil diunggah.'));
+    }
+
+    private function serveBuktiFile(string $relativePath): BinaryFileResponse
+    {
+        $disk = Storage::disk('public');
+
+        if (! $disk->exists($relativePath)) {
+            abort(404);
+        }
+
+        $path = $disk->path($relativePath);
+        $mime = $disk->mimeType($relativePath) ?: 'application/octet-stream';
+
+        return response()->file($path, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="'.basename($relativePath).'"',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentJsonFromRental(Rental $rental, string $message): array
+    {
+        return [
+            'message' => $message,
+            'metode_pembayaran' => $rental->metode_pembayaran,
+            'metode_pembayaran_label' => CashFlow::metodePembayaranLabel($rental->metode_pembayaran),
+            'jumlah_bayar' => (float) $rental->jumlah_bayar,
+            'jumlah_bayar_formatted' => number_format((float) $rental->jumlah_bayar, 0, ',', '.'),
+            'bukti_url' => $rental->buktiUrl(),
+            'status' => $rental->kelengkapanStatus(),
+            'status_label' => $rental->kelengkapanStatusLabel(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function paymentJsonFromCashFlow(CashFlow $cashFlow, string $message): array
+    {
+        return [
+            'message' => $message,
+            'metode_pembayaran' => $cashFlow->metode_pembayaran,
+            'metode_pembayaran_label' => CashFlow::metodePembayaranLabel($cashFlow->metode_pembayaran),
+            'jumlah_bayar' => (float) $cashFlow->jumlah_bayar,
+            'jumlah_bayar_formatted' => number_format((float) $cashFlow->jumlah_bayar, 0, ',', '.'),
             'bukti_url' => $cashFlow->buktiUrl(),
             'status' => $cashFlow->kelengkapanStatus(),
             'status_label' => $cashFlow->kelengkapanStatusLabel(),
-        ]);
+        ];
     }
 }

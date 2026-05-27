@@ -2,75 +2,58 @@
 
 namespace App\Support;
 
-use App\Models\CashFlow;
 use App\Models\Rental;
+use Carbon\CarbonInterface;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+
 class RentalPayment
 {
-    /**
-     * @return Collection<int, CashFlow>
-     */
-    public static function incomeFlowsForRental(Rental $rental): Collection
-    {
-        return CashFlow::query()
-            ->where('id_rental', $rental->id)
-            ->where('tipe_transaksi', 'income')
-            ->orderBy('id')
-            ->get();
-    }
-
-    /**
-     * @return Collection<int, CashFlow>
-     */
-    public static function applyToRental(
+    public static function saveOnRental(
         Rental $rental,
         string $metodePembayaran,
         float $jumlahBayar,
-        ?UploadedFile $bukti = null
-    ): Collection {
-        $flows = self::incomeFlowsForRental($rental);
-        if ($flows->isEmpty()) {
-            return $flows;
-        }
+        ?UploadedFile $bukti = null,
+        ?CarbonInterface $waktuPembayaran = null
+    ): Rental {
+        $buktiPath = self::storeBukti($bukti, $rental->bukti_transaksi);
 
-        $totalBill = (float) $flows->sum(fn (CashFlow $f) => (float) $f->total);
-        $buktiPath = self::storeBukti($bukti);
-        $now = now();
-        $uid = auth()->id();
+        $rental->update([
+            'metode_pembayaran' => $metodePembayaran,
+            'total' => (float) ($rental->total_harga ?? $rental->total ?? 0),
+            'jumlah_bayar' => $jumlahBayar,
+            'bukti_transaksi' => $buktiPath ?? $rental->bukti_transaksi,
+            'waktu_pembayaran' => $waktuPembayaran ?? $rental->waktu_pembayaran ?? now(),
+        ]);
 
-        $remaining = $jumlahBayar;
-        $lastIndex = $flows->count() - 1;
+        self::syncCashFlowWaktuFromRental($rental);
 
-        foreach ($flows->values() as $index => $flow) {
-            if ($index === $lastIndex) {
-                $share = round($remaining, 3);
-            } elseif ($totalBill > 0) {
-                $share = round(((float) $flow->total / $totalBill) * $jumlahBayar, 3);
-                $remaining -= $share;
-            } else {
-                $share = 0;
-            }
-
-            $flow->update([
-                'metode_pembayaran' => $metodePembayaran,
-                'jumlah_bayar' => $share,
-                'bukti_transaksi' => $buktiPath ?? $flow->bukti_transaksi,
-                'dom' => $now,
-                'idm' => $uid,
-            ]);
-        }
-
-        return $flows->fresh();
+        return $rental->fresh();
     }
 
-    public static function storeBukti(?UploadedFile $bukti): ?string
+    public static function syncCashFlowWaktuFromRental(Rental $rental): void
     {
-        if (! $bukti) {
-            return null;
+        if (! $rental->waktu_pembayaran) {
+            return;
         }
 
-        return $bukti->store('cash-flow-bukti', 'public');
+        $rental->cashFlows()
+            ->where('tipe_transaksi', 'income')
+            ->update(['waktu_pembayaran' => $rental->waktu_pembayaran]);
+    }
+
+    public static function storeBukti(?UploadedFile $bukti, ?string $existingPath = null): ?string
+    {
+        if (! $bukti) {
+            return $existingPath;
+        }
+
+        $disk = Storage::disk('public');
+        if ($existingPath && $disk->exists($existingPath)) {
+            $disk->delete($existingPath);
+        }
+
+        return $bukti->store('rental-bukti', 'public');
     }
 
     public static function requiresBukti(string $metode): bool
