@@ -142,16 +142,16 @@
         <div class="val text-success">{{ $fmtRp($summary['total_income_bayar']) }}</div>
       </div>
       <div class="summary-box">
+        <div class="lbl">Total tagihan</div>
+        <div class="val">{{ $fmtRp($summary['total_income_tagihan']) }}</div>
+      </div>
+      <div class="summary-box">
         <div class="lbl">Sewa Meja</div>
         <div class="val">{{ $fmtRp($summary['total_sewa_meja']) }}</div>
       </div>
       <div class="summary-box">
         <div class="lbl">Additional (F&amp;B)</div>
         <div class="val">{{ $fmtRp($summary['total_additional_fb']) }}</div>
-      </div>
-      <div class="summary-box">
-        <div class="lbl">Jumlah baris</div>
-        <div class="val">{{ $summary['count_income'] }}</div>
       </div>
     </div>
 
@@ -199,7 +199,7 @@
       @if ($incomeRows->isNotEmpty())
         <tfoot>
           <tr>
-            <th colspan="4" class="text-end">Total</th>
+            <th colspan="5" class="text-end">Total</th>
             <th class="text-end">{{ number_format($summary['total_income_tagihan'], 0, ',', '.') }}</th>
             <th class="text-end">{{ number_format($summary['total_income_bayar'], 0, ',', '.') }}</th>
             <th></th>

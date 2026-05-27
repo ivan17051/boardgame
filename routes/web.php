@@ -6,6 +6,7 @@ use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\ManualRentalController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalController;
 use App\Http\Controllers\RentalHistoryController;
 use App\Http\Controllers\TokoController;
@@ -67,6 +68,8 @@ Route::post('/logout', [LoginController::class, 'destroy'])
 
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password.update');
 
     Route::middleware('admin')->group(function () {
         Route::get('/users', [UserController::class, 'index'])->name('users.index');

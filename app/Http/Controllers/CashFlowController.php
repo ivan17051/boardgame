@@ -87,8 +87,6 @@ class CashFlowController extends Controller
                 ->sum(fn (CashFlow $r) => (float) $r->total),
             'total_expense' => (float) $expenseRows->sum(fn (CashFlow $r) => (float) $r->total),
             'count_income' => $incomeRows->count(),
-            'count_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() === 'lengkap')->count(),
-            'count_belum_lengkap' => $incomeRows->filter(fn (CashFlow $r) => $r->kelengkapanStatus() !== 'lengkap')->count(),
             'by_metode' => $this->incomeByMetode($incomeRows),
         ];
 

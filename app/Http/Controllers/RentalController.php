@@ -143,8 +143,10 @@ class RentalController extends Controller
         $validated = $this->validateCheckoutRequest($request);
 
         $paymentPayload = [
-            'metode_pembayaran' => $validated['metode_pembayaran'],
-            'jumlah_bayar' => (float) $validated['jumlah_bayar'],
+            'metode_pembayaran' => $validated['metode_pembayaran'] ?? null,
+            'jumlah_bayar' => array_key_exists('jumlah_bayar', $validated) && $validated['jumlah_bayar'] !== null
+                ? (float) $validated['jumlah_bayar']
+                : null,
             'bukti' => $request->file('bukti'),
         ];
 
@@ -194,13 +196,15 @@ class RentalController extends Controller
 
             $this->createIncomeCashFlows($locked, $endAt, $calc);
 
-            RentalPayment::saveOnRental(
-                $locked,
-                $paymentPayload['metode_pembayaran'],
-                $paymentPayload['jumlah_bayar'],
-                $paymentPayload['bukti'],
-                $endAt
-            );
+            if (! empty($paymentPayload['metode_pembayaran']) && $paymentPayload['jumlah_bayar'] !== null) {
+                RentalPayment::saveOnRental(
+                    $locked,
+                    $paymentPayload['metode_pembayaran'],
+                    $paymentPayload['jumlah_bayar'],
+                    $paymentPayload['bukti'],
+                    $endAt
+                );
+            }
 
             return [
                 'rental_id' => $locked->id,
@@ -229,18 +233,19 @@ class RentalController extends Controller
             'additional_items' => ['nullable', 'array'],
             'additional_items.*.id' => ['required', 'integer'],
             'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
-            'metode_pembayaran' => ['required', 'string', 'max:100', Rule::in(['tunai', 'transfer', 'qris', 'kartu', 'lainnya'])],
-            'jumlah_bayar' => ['required', 'numeric', 'min:0'],
+            'metode_pembayaran' => ['nullable', 'string', 'max:100', Rule::in(['tunai', 'transfer', 'qris', 'kartu', 'lainnya'])],
+            'jumlah_bayar' => ['nullable', 'numeric', 'min:0'],
             'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ], [
-            'metode_pembayaran.required' => 'Pilih metode pembayaran.',
-            'jumlah_bayar.required' => 'Jumlah bayar wajib diisi.',
+            'jumlah_bayar.min' => 'Jumlah bayar minimal 0.',
         ]);
 
-        if (RentalPayment::requiresBukti($validated['metode_pembayaran']) && ! $request->hasFile('bukti')) {
-            throw ValidationException::withMessages([
-                'bukti' => ['Bukti pembayaran wajib untuk metode non-tunai.'],
-            ]);
+        if (! empty($validated['metode_pembayaran'])) {
+            if ($validated['jumlah_bayar'] === null) {
+                throw ValidationException::withMessages([
+                    'jumlah_bayar' => ['Jumlah bayar wajib diisi jika metode pembayaran dipilih.'],
+                ]);
+            }
         }
 
         return $validated;

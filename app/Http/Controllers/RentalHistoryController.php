@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 class RentalHistoryController extends Controller
 {
     private const ORDER_COLUMNS = [
@@ -110,6 +111,8 @@ class RentalHistoryController extends Controller
             'waktu_end' => $rental->waktu_end ? $rental->waktu_end->format('Y-m-d\TH:i') : '',
             'waktu_pembayaran' => $rental->waktu_pembayaran ? $rental->waktu_pembayaran->format('Y-m-d\TH:i') : '',
             'can_invoice' => RentalInvoice::canIssue($rental),
+            'bukti_url' => $rental->buktiUrl(),
+            'has_bukti' => ! empty($rental->bukti_transaksi),
         ]);
     }
 
@@ -190,6 +193,7 @@ class RentalHistoryController extends Controller
             'jumlah_bayar' => ['nullable', 'numeric', 'min:0'],
             'total_harga' => ['nullable', 'numeric', 'min:0'],
             'waktu_pembayaran' => ['nullable', 'date'],
+            'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ]);
 
         $totalHarga = isset($validated['total_harga'])
@@ -203,12 +207,28 @@ class RentalHistoryController extends Controller
             'total' => $totalHarga,
         ]);
 
-        if (! empty($validated['metode_pembayaran']) && $validated['jumlah_bayar'] !== null) {
+        if (! empty($validated['metode_pembayaran'])) {
+            if ($validated['jumlah_bayar'] === null) {
+                throw ValidationException::withMessages([
+                    'jumlah_bayar' => ['Jumlah bayar wajib diisi jika metode pembayaran dipilih.'],
+                ]);
+            }
+
+            $requiresBukti = RentalPayment::requiresBukti($validated['metode_pembayaran']);
+            $hasExistingBukti = ! empty($rental->bukti_transaksi);
+            $hasNewBukti = $request->hasFile('bukti');
+
+            if ($requiresBukti && ! $hasExistingBukti && ! $hasNewBukti) {
+                throw ValidationException::withMessages([
+                    'bukti' => ['Bukti transaksi wajib untuk metode non-tunai.'],
+                ]);
+            }
+
             RentalPayment::saveOnRental(
                 $rental,
                 $validated['metode_pembayaran'],
                 (float) $validated['jumlah_bayar'],
-                null,
+                $request->file('bukti'),
                 ! empty($validated['waktu_pembayaran'])
                     ? \Carbon\Carbon::parse($validated['waktu_pembayaran'])
                     : ($rental->waktu_pembayaran ?? $rental->waktu_end)
@@ -277,7 +297,7 @@ class RentalHistoryController extends Controller
     {
         switch ($rental->kelengkapanStatus()) {
             case 'lengkap':
-                return '<span class="badge text-bg-success">Lengkap</span>';
+                return '<span class="badge text-bg-success">Paid</span>';
             case 'sebagian':
                 return '<span class="badge text-bg-info text-dark">Sebagian</span>';
             default:
@@ -288,15 +308,41 @@ class RentalHistoryController extends Controller
     private function actionButtons(Rental $rental): string
     {
         $invoiceUrl = RentalInvoice::canIssue($rental) ? route('rental.invoice', $rental) : '';
+        $rentalId = (int) $rental->id;
+        $customer = e($rental->nama_customer);
 
-        $print = $invoiceUrl !== ''
-            ? '<a href="'.e($invoiceUrl).'" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer" title="Cetak invoice" data-no-page-loader><i class="bi bi-printer"></i></a>'
-            : '<button type="button" class="btn btn-outline-secondary btn-sm" disabled title="Invoice belum lengkap"><i class="bi bi-printer"></i></button>';
+        if ($invoiceUrl !== '') {
+            $printItem = '<li><a class="dropdown-item" href="'.e($invoiceUrl).'" target="_blank" rel="noopener noreferrer" data-no-page-loader>'
+                .'<i class="bi bi-printer me-2"></i>Cetak invoice</a></li>';
+        } else {
+            $printItem = '<li><span class="dropdown-item disabled text-muted"><i class="bi bi-printer me-2"></i>Cetak invoice</span></li>';
+        }
 
-        $edit = '<button type="button" class="btn btn-outline-primary btn-sm btn-rental-edit" data-id="'.(int) $rental->id.'" title="Edit"><i class="bi bi-pencil-square"></i></button>';
+        if (! empty($rental->bukti_transaksi) && $rental->buktiUrl()) {
+            $buktiUrl = e($rental->buktiUrl());
+            $buktiItem = '<li><button type="button" class="dropdown-item btn-rental-bukti" data-bukti-url="'.$buktiUrl.'" data-customer="'.$customer.'">'
+                .'<i class="bi bi-file-earmark-image me-2"></i>Lihat bukti</button></li>';
+        } else {
+            $buktiItem = '<li><span class="dropdown-item disabled text-muted"><i class="bi bi-file-earmark-image me-2"></i>Lihat bukti</span></li>';
+        }
 
-        $delete = '<button type="button" class="btn btn-outline-danger btn-sm btn-rental-delete" data-id="'.(int) $rental->id.'" data-customer="'.e($rental->nama_customer).'" title="Hapus"><i class="bi bi-trash"></i></button>';
+        $editItem = '<li><button type="button" class="dropdown-item btn-rental-edit" data-id="'.$rentalId.'">'
+            .'<i class="bi bi-pencil-square me-2"></i>Edit</button></li>';
 
-        return '<div class="btn-group btn-group-sm" role="group">'.$print.$edit.$delete.'</div>';
+        $deleteItem = '<li><hr class="dropdown-divider"></li>'
+            .'<li><button type="button" class="dropdown-item text-danger btn-rental-delete" data-id="'.$rentalId.'" data-customer="'.$customer.'">'
+            .'<i class="bi bi-trash me-2"></i>Hapus</button></li>';
+
+        return '<div class="dropdown text-end">'
+            .'<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" title="Aksi">'
+            .'<i class="bi bi-three-dots-vertical"></i>'
+            .'</button>'
+            .'<ul class="dropdown-menu dropdown-menu-end">'
+            .$printItem
+            .$buktiItem
+            .$editItem
+            .$deleteItem
+            .'</ul>'
+            .'</div>';
     }
 }

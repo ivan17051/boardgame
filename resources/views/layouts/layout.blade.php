@@ -148,7 +148,14 @@
                 <!--end::Menu Body-->
                 <!--begin::Menu Footer-->
                 <li class="user-footer">
-                  <!-- <a href="#" class="btn btn-outline-secondary">Profile</a> -->
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary w-100 mb-2"
+                    data-bs-toggle="modal"
+                    data-bs-target="#changePasswordModal"
+                  >
+                    Ganti Password
+                  </button>
                   <form method="post" action="{{ route('logout') }}" class="w-100">
                     @csrf
                     <button type="submit" class="btn btn-outline-danger w-100">Keluar</button>
@@ -455,6 +462,9 @@
       const sparkline3 = new ApexCharts(document.querySelector('#sparkline-3'), option_sparkline3);
       sparkline3.render();
     </script>
+    @auth
+      @include('layouts.partials.password-modal')
+    @endauth
     @include('layouts.partials.session-expired')
     @include('layouts.partials.app-toast')
     @stack('scripts')

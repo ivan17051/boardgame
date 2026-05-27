@@ -53,38 +53,19 @@
       </div>
     </div>
 
-    <div class="row mb-4">
-      <div class="col-md-4 col-6">
+    <div class="row mb-3">
+      <div class="col-md-3 col-6">
         <div class="small-box text-bg-success">
           <div class="inner">
             <h3 class="fs-5">{{ $fmtRp($summary['total_income_bayar']) }}</h3>
-            <p>Pemasukan ({{ $summary['count_income'] }} baris)</p>
+            <p class="mb-0">Pemasukan ({{ $summary['count_income'] }} transaksi)</p>
           </div>
         </div>
       </div>
-      <div class="col-md-4 col-6">
-        <div class="small-box text-bg-primary">
-          <div class="inner">
-            <h3 class="fs-5">{{ $fmtRp($summary['total_sewa_meja']) }}</h3>
-            <p>Sewa Meja</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-4 col-6">
-        <div class="small-box text-bg-info">
-          <div class="inner">
-            <h3 class="fs-5">{{ $fmtRp($summary['total_additional_fb']) }}</h3>
-            <p>Additional Item (F&amp;B)</p>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="row mb-4">
       <div class="col-md-3 col-6">
         <div class="small-box text-bg-light border">
           <div class="inner text-dark">
-            <h3 class="fs-6">{{ $fmtRp($summary['total_income_tagihan']) }}</h3>
+            <h3 class="fs-5">{{ $fmtRp($summary['total_income_tagihan']) }}</h3>
             <p class="mb-0">Total tagihan</p>
           </div>
         </div>
@@ -92,24 +73,16 @@
       <div class="col-md-3 col-6">
         <div class="small-box text-bg-primary">
           <div class="inner">
-            <h3 class="fs-5">{{ $summary['count_lengkap'] }}</h3>
-            <p>Lengkap</p>
+            <h3 class="fs-5">{{ $fmtRp($summary['total_sewa_meja']) }}</h3>
+            <p class="mb-0">Sewa Meja</p>
           </div>
         </div>
       </div>
       <div class="col-md-3 col-6">
-        <div class="small-box text-bg-warning">
+        <div class="small-box text-bg-info">
           <div class="inner">
-            <h3 class="fs-5">{{ $summary['count_belum_lengkap'] }}</h3>
-            <p>Belum lengkap</p>
-          </div>
-        </div>
-      </div>
-      <div class="col-md-3 col-6">
-        <div class="small-box text-bg-secondary">
-          <div class="inner">
-            <h3 class="fs-5">{{ $fmtRp($summary['net']) }}</h3>
-            <p>Saldo bersih</p>
+            <h3 class="fs-5">{{ $fmtRp($summary['total_additional_fb']) }}</h3>
+            <p class="mb-0">Additional Item (F&amp;B)</p>
           </div>
         </div>
       </div>

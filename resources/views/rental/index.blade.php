@@ -66,6 +66,7 @@
                         <div class="font-monospace fs-4 fw-semibold text-dark mb-1 meja-timer">00:00:00</div>
                         <div class="small text-truncate" title="{{ $rental->nama_customer }}">{{ $rental->nama_customer }}</div>
                         <div class="small text-secondary">{{ $rental->isMember() ? 'Member' : 'Non-Member' }}</div>
+                        <div class="small text-secondary">Mulai: {{ $rental->waktu_start->format('H:i') }}</div>
                       @else
                         <div class="small text-secondary mt-2">Non-Mbr: {{ $fmtRp($meja->harga) }}/jam</div>
                         <div class="small text-secondary">Member: {{ $fmtRp($meja->harga_member ?? $meja->harga) }}/jam</div>
@@ -169,24 +170,25 @@
         <div id="checkoutPaymentAlert" class="alert alert-danger d-none small"></div>
 
         <div class="mb-3">
-          <label for="checkout_jumlah_bayar" class="form-label">Jumlah bayar <span class="text-danger">*</span></label>
+          <label for="checkout_jumlah_bayar" class="form-label">Jumlah bayar</label>
           <div class="input-group">
             <span class="input-group-text">Rp</span>
-            <input type="number" class="form-control" id="checkout_jumlah_bayar" min="0" step="1" required />
+            <input type="number" class="form-control" id="checkout_jumlah_bayar" min="0" step="1" />
           </div>
-          <div class="form-text">Default mengikuti total tagihan. Sesuaikan jika bayar sebagian.</div>
+          <div class="form-text">Opsional. Jika metode pembayaran dipilih, default mengikuti total tagihan.</div>
         </div>
 
         <div class="mb-3">
-          <label for="checkout_metode" class="form-label">Metode pembayaran <span class="text-danger">*</span></label>
-          <select class="form-select" id="checkout_metode" required>
-            <option value="">— Pilih metode —</option>
+          <label for="checkout_metode" class="form-label">Metode pembayaran</label>
+          <select class="form-select" id="checkout_metode">
+            <option value="">— Bayar nanti (isi di Data Sewa) —</option>
             <option value="tunai">Tunai</option>
             <option value="transfer">Transfer bank</option>
             <option value="qris">QRIS / e-wallet</option>
             <option value="kartu">Kartu debit/kredit</option>
             <option value="lainnya">Lainnya</option>
           </select>
+          <div class="form-text">Jika belum dibayar sekarang, biarkan kosong. Bisa diisi belakangan di menu <strong>Data Sewa</strong>.</div>
         </div>
 
         <div class="mb-0">
@@ -197,7 +199,7 @@
             id="checkout_bukti"
             accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
           />
-          <div class="form-text" id="checkout_bukti_help">Wajib untuk metode non-tunai. JPG, PNG, WEBP, atau PDF. Maks. 5 MB.</div>
+          <div class="form-text" id="checkout_bukti_help">Opsional. Unggah jika diperlukan arsip.</div>
         </div>
       </div>
       <div class="modal-footer">
@@ -326,14 +328,18 @@
   }
 
   function syncCheckoutBuktiField() {
+    const metode = checkoutMetodeEl ? checkoutMetodeEl.value : '';
+    const isEmpty = metode === '';
     const isTunai = checkoutMetodeEl && checkoutMetodeEl.value === 'tunai';
     if (checkoutBuktiRequiredMark) {
-      checkoutBuktiRequiredMark.classList.toggle('d-none', isTunai);
+      checkoutBuktiRequiredMark.classList.add('d-none');
     }
     if (checkoutBuktiHelpEl) {
-      checkoutBuktiHelpEl.textContent = isTunai
-        ? 'Opsional untuk tunai. Wajib untuk transfer, QRIS, kartu, dan lainnya.'
-        : 'Wajib untuk metode non-tunai. JPG, PNG, WEBP, atau PDF. Maks. 5 MB.';
+      checkoutBuktiHelpEl.textContent = isEmpty
+        ? 'Kosongkan jika pembayaran akan dilengkapi nanti di Data Sewa.'
+        : (isTunai
+          ? 'Opsional untuk tunai. Wajib untuk transfer, QRIS, kartu, dan lainnya.'
+          : 'Opsional. JPG, PNG, WEBP, atau PDF. Maks. 5 MB.');
     }
   }
 
@@ -486,20 +492,12 @@
     const jumlahBayar = jumlahBayarRaw === '' ? NaN : parseFloat(jumlahBayarRaw);
     const hasBukti = checkoutBuktiEl?.files?.length > 0;
 
-    if (!Number.isFinite(jumlahBayar) || jumlahBayar < 0) {
-      showCheckoutPaymentAlert('Jumlah bayar wajib diisi (min. 0).');
-      checkoutJumlahBayarEl?.focus();
-      return;
-    }
-    if (!metode) {
-      showCheckoutPaymentAlert('Pilih metode pembayaran.');
-      checkoutMetodeEl?.focus();
-      return;
-    }
-    if (metode !== 'tunai' && !hasBukti) {
-      showCheckoutPaymentAlert('Bukti bayar wajib untuk metode non-tunai.');
-      checkoutBuktiEl?.focus();
-      return;
+    if (metode) {
+      if (!Number.isFinite(jumlahBayar) || jumlahBayar < 0) {
+        showCheckoutPaymentAlert('Jumlah bayar wajib diisi (min. 0) jika metode pembayaran dipilih.');
+        checkoutJumlahBayarEl?.focus();
+        return;
+      }
     }
 
     const btn = this;
@@ -508,10 +506,12 @@
     const fd = new FormData();
     fd.append('ended_at', String(checkoutEndedAt));
     fd.append('additional_items', JSON.stringify(collectAdditionalItems()));
-    fd.append('metode_pembayaran', metode);
-    fd.append('jumlah_bayar', String(jumlahBayar));
-    if (hasBukti) {
-      fd.append('bukti', checkoutBuktiEl.files[0]);
+    if (metode) {
+      fd.append('metode_pembayaran', metode);
+      fd.append('jumlah_bayar', String(jumlahBayar));
+      if (hasBukti) {
+        fd.append('bukti', checkoutBuktiEl.files[0]);
+      }
     }
 
     fetch(routes.checkout(checkoutRentalId), {

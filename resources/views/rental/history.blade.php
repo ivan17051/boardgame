@@ -37,7 +37,7 @@
                 <th class="text-end">Total</th>
                 <th>Metode</th>
                 <th>Pembayaran</th>
-                <th class="text-end" style="width: 130px">Aksi</th>
+                <th class="text-end" style="width: 72px">Aksi</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -108,6 +108,18 @@
             <label for="rental_edit_waktu_pembayaran" class="form-label">Waktu pembayaran</label>
             <input type="datetime-local" class="form-control" id="rental_edit_waktu_pembayaran" />
           </div>
+
+          <div class="col-12 rental-edit-completed-only">
+            <label for="rental_edit_bukti" class="form-label">Bukti transaksi</label>
+            <div id="rental_edit_bukti_existing" class="mb-2"></div>
+            <input
+              type="file"
+              class="form-control"
+              id="rental_edit_bukti"
+              accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+            />
+            <div class="form-text">Unggah untuk mengganti bukti. Maks. 5&nbsp;MB.</div>
+          </div>
         </div>
 
         <p class="small text-secondary mb-0 mt-3 rental-edit-active-note d-none">
@@ -117,6 +129,26 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
         <button type="button" class="btn btn-primary" id="rentalEditSaveBtn">Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="rentalBuktiModal" tabindex="-1" aria-labelledby="rentalBuktiModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="rentalBuktiModalLabel">Bukti transaksi</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="rentalBuktiModalBody" class="p-3 text-center text-secondary">Memuat…</div>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="rentalBuktiOpenTab" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer" data-no-page-loader>
+          <i class="bi bi-box-arrow-up-right me-1"></i>Buka di tab baru
+        </a>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Tutup</button>
       </div>
     </div>
   </div>
@@ -140,6 +172,11 @@
 
   const editModalEl = document.getElementById('rentalEditModal');
   const editModal = editModalEl ? new bootstrap.Modal(editModalEl) : null;
+  const buktiModalEl = document.getElementById('rentalBuktiModal');
+  const buktiModal = buktiModalEl ? new bootstrap.Modal(buktiModalEl) : null;
+  const buktiModalBody = document.getElementById('rentalBuktiModalBody');
+  const buktiOpenTab = document.getElementById('rentalBuktiOpenTab');
+  const buktiExistingEl = document.getElementById('rental_edit_bukti_existing');
   const editAlert = document.getElementById('rentalEditAlert');
   const editIdEl = document.getElementById('rental_edit_id');
   const completedFields = document.querySelectorAll('.rental-edit-completed-only');
@@ -162,6 +199,41 @@
     if (!body || !body.errors) return null;
     const first = Object.values(body.errors)[0];
     return Array.isArray(first) ? first[0] : String(first);
+  }
+
+  function setBuktiExisting(url) {
+    if (!buktiExistingEl) return;
+    if (!url) {
+      buktiExistingEl.innerHTML = '<p class="small text-secondary mb-0">Belum ada bukti diunggah.</p>';
+      return;
+    }
+    buktiExistingEl.innerHTML =
+      '<button type="button" class="btn btn-sm btn-outline-secondary btn-rental-bukti" data-bukti-url="' +
+      url.replace(/"/g, '&quot;') +
+      '"><i class="bi bi-file-earmark-image me-1"></i>Lihat bukti saat ini</button>';
+  }
+
+  function isPdfUrl(url) {
+    return /\.pdf(\?|$)/i.test(url || '');
+  }
+
+  function showBuktiPreview(url, customer) {
+    if (!url || !buktiModalBody) return;
+    const title = document.getElementById('rentalBuktiModalLabel');
+    if (title) {
+      title.textContent = customer ? 'Bukti transaksi — ' + customer : 'Bukti transaksi';
+    }
+    if (buktiOpenTab) {
+      buktiOpenTab.href = url;
+    }
+    if (isPdfUrl(url)) {
+      buktiModalBody.innerHTML =
+        '<iframe src="' + url.replace(/"/g, '&quot;') + '" class="w-100 border-0" style="min-height:70vh" title="Bukti transaksi PDF"></iframe>';
+    } else {
+      buktiModalBody.innerHTML =
+        '<img src="' + url.replace(/"/g, '&quot;') + '" alt="Bukti transaksi" class="img-fluid rounded shadow-sm" style="max-height:70vh" />';
+    }
+    if (buktiModal) buktiModal.show();
   }
 
   function toggleCompletedFields(isCompleted) {
@@ -211,7 +283,7 @@
     ],
   });
 
-  $('#table-rental-history').on('click', '.btn-rental-edit', function () {
+  $(document).on('click', '.btn-rental-edit', function () {
     const id = this.getAttribute('data-id');
     if (!id) return;
     hideEditAlert();
@@ -231,6 +303,9 @@
         document.getElementById('rental_edit_jumlah_bayar').value = d.jumlah_bayar != null ? Math.round(d.jumlah_bayar) : '';
         document.getElementById('rental_edit_metode').value = d.metode_pembayaran || '';
         document.getElementById('rental_edit_waktu_pembayaran').value = d.waktu_pembayaran || '';
+        const buktiEl = document.getElementById('rental_edit_bukti');
+        if (buktiEl) buktiEl.value = '';
+        setBuktiExisting(d.bukti_url || '');
         toggleCompletedFields(d.status === 'completed');
         if (editModal) editModal.show();
       })
@@ -244,20 +319,27 @@
     const id = editIdEl ? editIdEl.value : '';
     if (!id) return;
 
-    const payload = {
-      nama_customer: document.getElementById('rental_edit_nama_customer').value.trim(),
-      tipe_customer: document.getElementById('rental_edit_tipe_customer').value,
-    };
+    const fd = new FormData();
+    fd.append('_method', 'PUT');
+    fd.append('nama_customer', document.getElementById('rental_edit_nama_customer').value.trim());
+    fd.append('tipe_customer', document.getElementById('rental_edit_tipe_customer').value);
 
     if (currentStatus === 'completed') {
-      payload.total_harga = parseFloat(document.getElementById('rental_edit_total_harga').value) || 0;
-      payload.jumlah_bayar = parseFloat(document.getElementById('rental_edit_jumlah_bayar').value) || 0;
-      payload.metode_pembayaran = document.getElementById('rental_edit_metode').value || null;
+      fd.append('total_harga', String(parseFloat(document.getElementById('rental_edit_total_harga').value) || 0));
+      const metode = document.getElementById('rental_edit_metode').value || '';
+      const jumlah = document.getElementById('rental_edit_jumlah_bayar').value || '';
+      if (metode) fd.append('metode_pembayaran', metode);
+      if (jumlah !== '') fd.append('jumlah_bayar', String(parseFloat(jumlah) || 0));
       const waktu = document.getElementById('rental_edit_waktu_pembayaran').value;
-      if (waktu) payload.waktu_pembayaran = waktu;
+      if (waktu) fd.append('waktu_pembayaran', waktu);
+
+      const buktiEl = document.getElementById('rental_edit_bukti');
+      if (buktiEl && buktiEl.files && buktiEl.files.length > 0) {
+        fd.append('bukti', buktiEl.files[0]);
+      }
     }
 
-    if (!payload.nama_customer) {
+    if (!fd.get('nama_customer')) {
       showEditAlert('Nama pelanggan wajib diisi.');
       return;
     }
@@ -266,13 +348,12 @@
     btn.disabled = true;
 
     fetch(routes.update(id), {
-      method: 'PUT',
+      method: 'POST',
       headers: {
         'X-CSRF-TOKEN': csrf,
         Accept: 'application/json',
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: fd,
     })
       .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
       .then(function (r) {
@@ -288,7 +369,20 @@
       .finally(function () { btn.disabled = false; });
   });
 
-  $('#table-rental-history').on('click', '.btn-rental-delete', function () {
+  $(document).on('click', '.btn-rental-bukti', function () {
+    const url = this.getAttribute('data-bukti-url');
+    const customer = this.getAttribute('data-customer') || '';
+    if (!url) return;
+    showBuktiPreview(url, customer);
+  });
+
+  buktiModalEl?.addEventListener('hidden.bs.modal', function () {
+    if (buktiModalBody) {
+      buktiModalBody.innerHTML = '';
+    }
+  });
+
+  $(document).on('click', '.btn-rental-delete', function () {
     const id = this.getAttribute('data-id');
     const customer = this.getAttribute('data-customer') || '';
     if (!id) return;
