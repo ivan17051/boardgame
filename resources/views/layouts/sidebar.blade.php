@@ -58,12 +58,12 @@
           <p>Data Sewa</p>
         </a>
       </li>
-      <li class="nav-item">
+      <!-- <li class="nav-item">
         <a href="{{ route('cashflow.index') }}" class="nav-link {{ request()->routeIs('cashflow.*') && ! request()->routeIs('cashflow.report') ? 'active' : '' }}">
           <i class="nav-icon bi bi-cash-stack"></i>
           <p>Arus kas</p>
         </a>
-      </li>
+      </li> -->
       <li class="nav-item">
         <a href="{{ route('cashflow.report') }}" class="nav-link {{ request()->routeIs('cashflow.report') ? 'active' : '' }}">
           <i class="nav-icon bi bi-file-earmark-bar-graph"></i>
