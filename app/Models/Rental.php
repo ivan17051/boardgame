@@ -22,6 +22,12 @@ class Rental extends Model
         'waktu_end',
         'total_durasi',
         'harga',
+        'id_promo',
+        'promo_nama',
+        'promo_hourly_rate',
+        'promo_duration_limit',
+        'promo_jam_mulai',
+        'promo_jam_selesai',
         'total_harga',
         'total_harga_sewa',
         'total_harga_additional',
@@ -40,6 +46,8 @@ class Rental extends Model
         'waktu_pembayaran' => 'datetime',
         'total_durasi' => 'decimal:2',
         'harga' => 'decimal:3',
+        'promo_hourly_rate' => 'decimal:3',
+        'promo_duration_limit' => 'decimal:2',
         'total_harga' => 'decimal:3',
         'total_harga_sewa' => 'decimal:3',
         'total_harga_additional' => 'decimal:3',
@@ -70,6 +78,13 @@ class Rental extends Model
     public function isMember(): bool
     {
         return $this->tipe_customer === 'member';
+    }
+
+    public function hasPromo(): bool
+    {
+        return $this->promo_hourly_rate !== null
+            && $this->promo_duration_limit !== null
+            && (float) $this->promo_duration_limit > 0;
     }
 
     public function isActive(): bool

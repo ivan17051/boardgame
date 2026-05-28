@@ -7,6 +7,7 @@ use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
 use App\Models\RentalAdditionalItem;
+use App\Models\RentalPromo;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
 use App\Support\RentalPayment;
@@ -40,7 +41,15 @@ class ManualRentalController extends Controller
                 : $query->get(['id', 'nama', 'harga']);
         }
 
-        return view('rental.manual', compact('mejas', 'additionalItems'));
+        $rentalPromos = collect();
+        if (Schema::hasTable('m_rental_promo')) {
+            $rentalPromos = TokoScope::scopeRentalPromos(RentalPromo::query())
+                ->active()
+                ->orderBy('nama')
+                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai']);
+        }
+
+        return view('rental.manual', compact('mejas', 'additionalItems', 'rentalPromos'));
     }
 
     public function store(Request $request): JsonResponse
@@ -60,6 +69,7 @@ class ManualRentalController extends Controller
                 RentalCheckout::CUSTOMER_NON_MEMBER,
             ])],
             'jam_ditagihkan' => ['required', 'integer', 'min:1', 'max:999'],
+            'id_promo' => ['nullable', 'integer'],
             'additional_items' => ['nullable', 'array'],
             'additional_items.*.id' => ['required', 'integer'],
             'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
@@ -85,7 +95,42 @@ class ManualRentalController extends Controller
 
             $rate = RentalCheckout::rateForMeja($meja, $validated['tipe_customer']);
             $billedHours = (int) $validated['jam_ditagihkan'];
-            $totalHargaSewa = round($billedHours * $rate, 3);
+            $at = Carbon::parse($validated['tanggal'])->setTimeFrom(now());
+            $promoSnapshot = RentalCheckout::resolvePromoSnapshot(
+                isset($validated['id_promo']) ? (int) $validated['id_promo'] : null,
+                (int) $meja->id_toko,
+                $at,
+                false
+            );
+            if (! empty($validated['id_promo']) && ! $promoSnapshot) {
+                throw ValidationException::withMessages([
+                    'id_promo' => ['Promo tidak valid atau tidak aktif untuk toko meja ini.'],
+                ]);
+            }
+            $totalMinutes = $billedHours * 60;
+            $waktuStart = Carbon::parse($validated['tanggal'])->setTimeFrom(now());
+            $waktuEnd = $waktuStart->copy()->addMinutes($totalMinutes);
+
+            $promoRate = $promoSnapshot['promo_hourly_rate'] ?? null;
+            $promoLimit = $promoSnapshot['promo_duration_limit'] ?? null;
+            if ($promoSnapshot) {
+                $promoMinutes = RentalCheckout::promoEligibleMinutes(
+                    $waktuStart,
+                    $waktuEnd,
+                    $promoSnapshot['promo_jam_mulai'],
+                    $promoSnapshot['promo_jam_selesai']
+                );
+                $sewaCalc = RentalCheckout::computeTableRentalPriceFromSession(
+                    $totalMinutes,
+                    $promoMinutes,
+                    $rate,
+                    $promoRate,
+                    $promoLimit
+                );
+            } else {
+                $sewaCalc = RentalCheckout::computeTableRentalPrice($billedHours, $rate, null, null);
+            }
+            $totalHargaSewa = $sewaCalc['total_harga_sewa'];
             $additionalLines = RentalCheckout::resolveAdditionalLines($validated['additional_items'] ?? []);
             $totalHargaAdditional = round(
                 array_sum(array_column($additionalLines, 'subtotal')),
@@ -93,12 +138,26 @@ class ManualRentalController extends Controller
             );
             $totalHarga = round($totalHargaSewa + $totalHargaAdditional, 3);
 
-            $at = Carbon::parse($validated['tanggal'])->setTime(12, 0, 0);
-            $totalMinutes = $billedHours * 60;
-            $waktuStart = $at->copy();
-            $waktuEnd = $at->copy()->addMinutes($totalMinutes);
+            $at = $waktuEnd->copy();
 
-            $rental = Rental::query()->create([
+            $promoFields = [
+                'id_promo' => null,
+                'promo_nama' => null,
+                'promo_hourly_rate' => null,
+                'promo_duration_limit' => null,
+            ];
+            if ($promoSnapshot) {
+                $promoFields = [
+                    'id_promo' => $promoSnapshot['id_promo'],
+                    'promo_nama' => $promoSnapshot['promo_nama'],
+                    'promo_hourly_rate' => $promoSnapshot['promo_hourly_rate'],
+                    'promo_duration_limit' => $promoSnapshot['promo_duration_limit'],
+                    'promo_jam_mulai' => $promoSnapshot['promo_jam_mulai'],
+                    'promo_jam_selesai' => $promoSnapshot['promo_jam_selesai'],
+                ];
+            }
+
+            $rental = Rental::query()->create(array_merge([
                 'id_meja' => $meja->id,
                 'nama_customer' => $validated['nama_customer'],
                 'tipe_customer' => $validated['tipe_customer'],
@@ -112,7 +171,7 @@ class ManualRentalController extends Controller
                 'total' => $totalHarga,
                 'status' => 'completed',
                 'guest_token' => null,
-            ]);
+            ], $promoFields));
 
             foreach ($additionalLines as $line) {
                 RentalAdditionalItem::query()->create([

@@ -49,6 +49,12 @@
           <p>Item tambahan</p>
         </a>
       </li>
+      <li class="nav-item">
+        <a href="{{ route('rental-promos.index') }}" class="nav-link {{ request()->routeIs('rental-promos.*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-tag-fill"></i>
+          <p>Promo sewa</p>
+        </a>
+      </li>
       @endif
 
       <li class="nav-header">TRANSAKSI</li>

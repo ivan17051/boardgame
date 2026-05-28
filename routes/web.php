@@ -8,6 +8,7 @@ use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\ManualRentalController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\RentalPromoController;
 use App\Http\Controllers\RentalHistoryController;
 use App\Http\Controllers\TokoController;
 use App\Http\Controllers\UserController;
@@ -86,6 +87,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/additional-items', [AdditionalItemController::class, 'store'])->name('additional-items.store');
         Route::put('/additional-items/{additionalItem}', [AdditionalItemController::class, 'update'])->name('additional-items.update');
         Route::delete('/additional-items/{additionalItem}', [AdditionalItemController::class, 'destroy'])->name('additional-items.destroy');
+
+        Route::get('/rental-promos', [RentalPromoController::class, 'index'])->name('rental-promos.index');
+        Route::post('/rental-promos', [RentalPromoController::class, 'store'])->name('rental-promos.store');
+        Route::put('/rental-promos/{rentalPromo}', [RentalPromoController::class, 'update'])->name('rental-promos.update');
+        Route::delete('/rental-promos/{rentalPromo}', [RentalPromoController::class, 'destroy'])->name('rental-promos.destroy');
     });
 
     Route::get('/sewa', [RentalController::class, 'index'])->name('rental.index');

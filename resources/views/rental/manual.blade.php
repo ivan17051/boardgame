@@ -81,6 +81,27 @@
               <input type="number" class="form-control" id="jam_ditagihkan" name="jam_ditagihkan" min="1" max="999" value="1" required />
               <div class="form-text">Jumlah jam yang ditagihkan ke customer.</div>
             </div>
+            @if ($rentalPromos->isNotEmpty())
+              <div class="col-md-4">
+                <label for="manual_id_promo" class="form-label">Promo / diskon</label>
+                <select class="form-select" id="manual_id_promo" name="id_promo">
+                  <option value="">— Tanpa promo —</option>
+                  @foreach ($rentalPromos as $promo)
+                    <option
+                      value="{{ $promo->id }}"
+                      data-toko-id="{{ (int) $promo->id_toko }}"
+                      data-rate="{{ (float) $promo->promo_hourly_rate }}"
+                      data-limit="{{ (float) $promo->promo_duration_limit }}"
+                      data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
+                      data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
+                    >
+                      {{ $promo->nama }} — {{ $fmtRp($promo->promo_hourly_rate) }}/jam · {{ $promo->jamMulaiFormatted() }}–{{ $promo->jamSelesaiFormatted() }}
+                    </option>
+                  @endforeach
+                </select>
+                <div class="form-text" id="manualPromoHint"></div>
+              </div>
+            @endif
             <div class="col-md-4 d-flex align-items-end">
               <div class="border rounded p-3 bg-light w-100">
                 <div class="small text-secondary">Perkiraan biaya sewa</div>
@@ -208,6 +229,51 @@
     return isMember() ? r.member : r.non;
   }
 
+  function selectedPromo() {
+    const sel = document.getElementById('manual_id_promo');
+    if (!sel || !sel.value) return null;
+    const opt = sel.selectedOptions[0];
+    if (!opt) return null;
+    return {
+      rate: parseFloat(opt.getAttribute('data-rate') || '0'),
+      limit: parseFloat(opt.getAttribute('data-limit') || '0'),
+    };
+  }
+
+  function computeSewaPrice(billedHours, normalRate, promo) {
+    billedHours = Math.max(0, billedHours);
+    if (!promo || !promo.limit || promo.limit <= 0) {
+      return billedHours * normalRate;
+    }
+    if (billedHours <= promo.limit) {
+      return billedHours * promo.rate;
+    }
+    const promoPart = promo.limit * promo.rate;
+    const normalPart = (billedHours - promo.limit) * normalRate;
+    return promoPart + normalPart;
+  }
+
+  function syncPromoOptions() {
+    const sel = document.getElementById('manual_id_promo');
+    const hint = document.getElementById('manualPromoHint');
+    if (!sel) return;
+    const opt = mejaEl?.selectedOptions[0];
+    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || 0;
+    Array.from(sel.options).forEach(function (o, idx) {
+      if (idx === 0) return;
+      const optToko = parseInt(o.getAttribute('data-toko-id') || '0', 10) || 0;
+      const show = !tokoId || optToko === tokoId;
+      o.hidden = !show;
+      if (!show && o.selected) sel.value = '';
+    });
+    const promo = selectedPromo();
+    if (hint) {
+      hint.textContent = promo
+        ? 'Promo ' + fmtRp(promo.rate) + '/jam untuk ' + promo.limit + ' jam, lalu tarif normal.'
+        : '';
+    }
+  }
+
   function collectAdditional() {
     const items = [];
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
@@ -256,12 +322,12 @@
   function recalcTotals() {
     const rate = currentRate();
     const hours = parseInt(jamEl?.value, 10) || 0;
-    const sewa = Math.max(0, hours) * rate;
+    const sewa = computeSewaPrice(hours, rate, selectedPromo());
     const add = additionalTotal();
     const grand = sewa + add;
 
     document.getElementById('manualRateHint').textContent =
-      'Tarif: ' + fmtRp(rate) + ' / jam (' + (isMember() ? 'Member' : 'Non-Member') + ')';
+      'Tarif normal: ' + fmtRp(rate) + ' / jam (' + (isMember() ? 'Member' : 'Non-Member') + ')';
     document.getElementById('previewSewa').textContent = fmtRp(sewa);
     document.getElementById('sumSewa').textContent = fmtRp(sewa);
     document.getElementById('sumAdditional').textContent = fmtRp(add);
@@ -284,6 +350,11 @@
 
   mejaEl?.addEventListener('change', function () {
     syncAdditionalItemsByToko();
+    syncPromoOptions();
+    recalcTotals();
+  });
+  document.getElementById('manual_id_promo')?.addEventListener('change', function () {
+    syncPromoOptions();
     recalcTotals();
   });
   jamEl?.addEventListener('input', recalcTotals);
@@ -298,6 +369,7 @@
 
   syncBukti();
   syncAdditionalItemsByToko();
+  syncPromoOptions();
   recalcTotals();
 
   function confirmProceedWithoutBukti(onConfirm) {
@@ -354,6 +426,8 @@
       fd.append('nama_customer', document.getElementById('nama_customer').value.trim());
       fd.append('tipe_customer', document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member');
       fd.append('jam_ditagihkan', jamEl.value);
+      const idPromo = document.getElementById('manual_id_promo')?.value;
+      if (idPromo) fd.append('id_promo', idPromo);
       fd.append('additional_items', JSON.stringify(collectAdditional()));
       fd.append('metode_pembayaran', metode);
       fd.append('jumlah_bayar', String(jumlahBayar));

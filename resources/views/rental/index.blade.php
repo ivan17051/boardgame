@@ -107,6 +107,27 @@
             </div>
             <div class="form-text mt-2" id="checkinRateHint">Tarif: —</div>
           </div>
+          @if ($rentalPromos->isNotEmpty())
+            <div class="mb-3">
+              <label for="checkin_id_promo" class="form-label">Promo / diskon</label>
+              <select class="form-select" id="checkin_id_promo" name="id_promo">
+                <option value="">— Tanpa promo (tarif normal) —</option>
+                @foreach ($rentalPromos as $promo)
+                  <option
+                    value="{{ $promo->id }}"
+                    data-toko-id="{{ (int) $promo->id_toko }}"
+                    data-rate="{{ (float) $promo->promo_hourly_rate }}"
+                    data-limit="{{ (float) $promo->promo_duration_limit }}"
+                    data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
+                    data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
+                  >
+                    {{ $promo->nama }} — {{ $fmtRp($promo->promo_hourly_rate) }}/jam · {{ $promo->jamMulaiFormatted() }}–{{ $promo->jamSelesaiFormatted() }}
+                  </option>
+                @endforeach
+              </select>
+              <div class="form-text" id="checkinPromoHint"></div>
+            </div>
+          @endif
           <div class="mb-0">
             <label for="checkin_nama_customer" class="form-label">Nama customer</label>
             <input type="text" class="form-control" id="checkin_nama_customer" name="nama_customer" required maxlength="255" autocomplete="name" />
@@ -297,8 +318,47 @@
     if (!hint || !checkinMeja) return;
     const member = document.getElementById('tipe_member')?.checked;
     const rate = member ? checkinMeja.hargaMember : checkinMeja.hargaNonMember;
-    hint.textContent = 'Tarif: ' + fmtRp(rate) + ' / jam (' + (member ? 'Member' : 'Non-Member') + ')';
+    hint.textContent = 'Tarif normal: ' + fmtRp(rate) + ' / jam (' + (member ? 'Member' : 'Non-Member') + ')';
+    updateCheckinPromoOptions();
   }
+
+  function updateCheckinPromoOptions() {
+    const select = document.getElementById('checkin_id_promo');
+    const promoHint = document.getElementById('checkinPromoHint');
+    if (!select || !checkinMeja) return;
+    const tokoId = parseInt(checkinMeja.tokoId || '0', 10) || 0;
+    let visibleCount = 0;
+    Array.from(select.options).forEach(function (opt, idx) {
+      if (idx === 0) {
+        opt.hidden = false;
+        return;
+      }
+      const optToko = parseInt(opt.getAttribute('data-toko-id') || '0', 10) || 0;
+      const show = !tokoId || optToko === tokoId;
+      opt.hidden = !show;
+      if (!show && opt.selected) {
+        select.value = '';
+      }
+      if (show) visibleCount++;
+    });
+    const sel = select.options[select.selectedIndex];
+    if (promoHint) {
+      if (sel && sel.value) {
+        const rate = parseFloat(sel.getAttribute('data-rate') || '0');
+        const limit = parseFloat(sel.getAttribute('data-limit') || '0');
+        const jamMulai = sel.getAttribute('data-jam-mulai') || '';
+        const jamSelesai = sel.getAttribute('data-jam-selesai') || '';
+        promoHint.textContent = 'Promo: ' + fmtRp(rate) + '/jam · jam ' + jamMulai + '–' + jamSelesai
+          + ' (maks. ' + limit + ' jam ditagihkan dengan tarif promo).';
+      } else {
+        promoHint.textContent = visibleCount > 0
+          ? 'Opsional. Hingga batas jam promo, sisanya tarif normal.'
+          : '';
+      }
+    }
+  }
+
+  document.getElementById('checkin_id_promo')?.addEventListener('change', updateCheckinPromoOptions);
 
   document.querySelectorAll('input[name="tipe_customer"]').forEach(function (inp) {
     inp.addEventListener('change', updateCheckinRateHint);
@@ -315,6 +375,7 @@
     checkinMeja = {
       id: btn.getAttribute('data-meja-id'),
       nama: btn.getAttribute('data-meja-nama'),
+      tokoId: btn.getAttribute('data-toko-id'),
       hargaNonMember: parseFloat(btn.getAttribute('data-harga-non-member')) || 0,
       hargaMember: parseFloat(btn.getAttribute('data-harga-member')) || 0,
     };
@@ -322,6 +383,8 @@
     document.getElementById('checkin_id_meja').value = checkinMeja.id;
     document.getElementById('checkin_nama_customer').value = '';
     document.getElementById('tipe_non_member').checked = true;
+    const promoSel = document.getElementById('checkin_id_promo');
+    if (promoSel) promoSel.value = '';
     document.getElementById('checkinAlert')?.classList.add('d-none');
     updateCheckinRateHint();
     checkinModal?.show();
@@ -481,6 +544,8 @@
       nama_customer: document.getElementById('checkin_nama_customer').value.trim(),
       tipe_customer: tipe,
     };
+    const idPromo = document.getElementById('checkin_id_promo')?.value;
+    if (idPromo) payload.id_promo = parseInt(idPromo, 10);
     fetch(routes.store, {
       method: 'POST',
       headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },

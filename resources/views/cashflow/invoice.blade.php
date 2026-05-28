@@ -169,19 +169,15 @@
         </td>
       </tr>
       <tr>
-        <th>Customer</th>
-        <td>{{ $rental->nama_customer }}</td>
-      </tr>
-      <tr>
-        <th>Tipe customer</th>
-        <td>{{ $rental->isMember() ? 'Member' : 'Non-Member' }}</td>
+        <th>Nama customer</th>
+        <td>({{ $rental->isMember() ? 'Member' : 'Non-Member' }}) {{ $rental->nama_customer }}</td>
       </tr>
       @if ($rental->waktu_start && $rental->waktu_end)
         <tr>
           <th>Periode sewa</th>
           <td>
-            {{ $rental->waktu_start->format('d/m/Y H:i') }}
-            — {{ $rental->waktu_end->format('d/m/Y H:i') }}
+            {{ $rental->waktu_start->format('H:i') }}
+            — {{ $rental->waktu_end->format('H:i') }}
           </td>
         </tr>
       @endif
@@ -192,9 +188,20 @@
         </tr>
       @endif
       <tr>
-        <th>Tarif / jam</th>
-        <td>{{ $fmtRp($rental->harga) }}</td>
+        <th>Tarif normal</th>
+        <td>{{ $fmtRp($rental->harga) }}/jam</td>
       </tr>
+      @if ($rental->hasPromo())
+        <tr>
+          <th>Promo</th>
+          <td>
+            {{ $fmtRp($rental->promo_hourly_rate) }}/jam -
+            {{ $rental->promo_nama }}
+              ({{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5) }}–{{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5) }}
+              , maks. {{ number_format((float) $rental->promo_duration_limit, 2, ',', '.') }} jam)
+          </td>
+        </tr>
+      @endif
       <tr>
         <th>Metode pembayaran</th>
         <td>{{ $metode_label }}</td>
@@ -220,7 +227,11 @@
           <td>
             Sewa meja
             @if ($billed_hours > 0)
-              <span class="text-secondary">({{ number_format($billed_hours, 2, ',', '.') }} jam × {{ $fmtRp($rental->harga) }}/jam)</span>
+              @if ($rental->hasPromo())
+                <span class="text-secondary">(durasi {{ number_format($billed_hours, 2, ',', '.') }} jam; promo {{ $rental->promo_nama }})</span>
+              @else
+                <span class="text-secondary">({{ number_format($billed_hours, 2, ',', '.') }} jam × {{ $fmtRp($rental->harga) }}/jam)</span>
+              @endif
             @endif
           </td>
           <td class="text-end">1</td>

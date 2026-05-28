@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\AdditionalItem;
+use App\Models\RentalPromo;
 use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
@@ -82,6 +83,15 @@ class TokoScope
         return $query->where('id_toko', self::userIdToko());
     }
 
+    public static function scopeRentalPromos(Builder $query): Builder
+    {
+        if (self::canSeeAll()) {
+            return $query;
+        }
+
+        return $query->where('id_toko', self::userIdToko());
+    }
+
     public static function resolveIdTokoForSave($requested): int
     {
         if (self::canSeeAll()) {
@@ -151,6 +161,17 @@ class TokoScope
         }
 
         if ((int) $additionalItem->id_toko !== self::userIdToko()) {
+            abort(403);
+        }
+    }
+
+    public static function authorizeRentalPromo(RentalPromo $promo): void
+    {
+        if (self::canSeeAll()) {
+            return;
+        }
+
+        if ((int) $promo->id_toko !== self::userIdToko()) {
             abort(403);
         }
     }

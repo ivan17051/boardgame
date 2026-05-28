@@ -7,6 +7,7 @@ use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
 use App\Models\RentalAdditionalItem;
+use App\Models\RentalPromo;
 use App\Models\Toko;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
@@ -44,7 +45,15 @@ class RentalController extends Controller
                 : $query->get(['id', 'nama', 'harga']);
         }
 
-        return view('rental.index', compact('tokos', 'additionalItems'));
+        $rentalPromos = collect();
+        if (Schema::hasTable('m_rental_promo')) {
+            $rentalPromos = TokoScope::scopeRentalPromos(RentalPromo::query())
+                ->activeAt(now())
+                ->orderBy('nama')
+                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai']);
+        }
+
+        return view('rental.index', compact('tokos', 'additionalItems', 'rentalPromos'));
     }
 
     public function invoice(Rental $rental)
@@ -69,6 +78,7 @@ class RentalController extends Controller
                 RentalCheckout::CUSTOMER_MEMBER,
                 RentalCheckout::CUSTOMER_NON_MEMBER,
             ])],
+            'id_promo' => ['nullable', 'integer'],
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -89,7 +99,7 @@ class RentalController extends Controller
             $now = now();
             $rate = RentalCheckout::rateForMeja($meja, $validated['tipe_customer']);
 
-            Rental::query()->create([
+            Rental::query()->create(array_merge([
                 'id_meja' => $meja->id,
                 'nama_customer' => $validated['nama_customer'],
                 'tipe_customer' => $validated['tipe_customer'],
@@ -101,7 +111,7 @@ class RentalController extends Controller
                 'total_harga_sewa' => null,
                 'total_harga_additional' => null,
                 'status' => 'active',
-            ]);
+            ], $this->promoFieldsForRental($meja, $validated['id_promo'] ?? null, now())));
 
             $meja->update(['status' => 'rented']);
         });
@@ -293,6 +303,41 @@ class RentalController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function promoFieldsForRental(Meja $meja, ?int $idPromo, CarbonInterface $at): array
+    {
+        $empty = [
+            'id_promo' => null,
+            'promo_nama' => null,
+            'promo_hourly_rate' => null,
+            'promo_duration_limit' => null,
+            'promo_jam_mulai' => null,
+            'promo_jam_selesai' => null,
+        ];
+
+        if (! $idPromo) {
+            return $empty;
+        }
+
+        $snapshot = RentalCheckout::resolvePromoSnapshot($idPromo, (int) $meja->id_toko, $at, true);
+        if (! $snapshot) {
+            throw ValidationException::withMessages([
+                'id_promo' => ['Promo tidak berlaku saat ini (di luar jam promo) atau tidak aktif untuk toko meja ini.'],
+            ]);
+        }
+
+        return [
+            'id_promo' => $snapshot['id_promo'],
+            'promo_nama' => $snapshot['promo_nama'],
+            'promo_hourly_rate' => $snapshot['promo_hourly_rate'],
+            'promo_duration_limit' => $snapshot['promo_duration_limit'],
+            'promo_jam_mulai' => $snapshot['promo_jam_mulai'],
+            'promo_jam_selesai' => $snapshot['promo_jam_selesai'],
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $calc
      */
     private function checkoutPayload(Rental $rental, CarbonInterface $endAt, array $calc): array
@@ -312,6 +357,10 @@ class RentalController extends Controller
             'billed_hours' => $calc['billed_hours'],
             'harga_per_jam' => (float) $rental->harga,
             'harga_per_jam_formatted' => number_format((float) $rental->harga, 0, ',', '.'),
+            'has_promo' => $rental->hasPromo(),
+            'promo_nama' => $rental->promo_nama,
+            'promo_hourly_rate' => $rental->hasPromo() ? (float) $rental->promo_hourly_rate : null,
+            'promo_duration_limit' => $rental->hasPromo() ? (float) $rental->promo_duration_limit : null,
             'total_harga_sewa' => $calc['total_harga_sewa'],
             'total_harga_sewa_formatted' => number_format($calc['total_harga_sewa'], 0, ',', '.'),
             'total_harga_additional' => $calc['total_harga_additional'],
