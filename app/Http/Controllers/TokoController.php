@@ -19,7 +19,9 @@ class TokoController extends Controller
             ->orderBy('nama')
             ->get();
 
-        return view('toko.index', compact('tokos'));
+        $canManageTokos = TokoScope::canSeeAll();
+
+        return view('toko.index', compact('tokos', 'canManageTokos'));
     }
 
     public function store(Request $request): JsonResponse

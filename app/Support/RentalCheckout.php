@@ -119,7 +119,7 @@ class RentalCheckout
 
         $lines = [];
         $ids = collect($input)->pluck('id')->filter()->unique()->values()->all();
-        $masters = AdditionalItem::query()
+        $masters = TokoScope::scopeAdditionalItems(AdditionalItem::query())
             ->active()
             ->whereIn('id', $ids)
             ->get()

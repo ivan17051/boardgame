@@ -52,6 +52,7 @@
                     data-harga-non-member="{{ (float) $m->harga }}"
                     data-harga-member="{{ (float) ($m->harga_member ?? $m->harga) }}"
                     data-toko="{{ $m->toko->nama ?? '' }}"
+                    data-toko-id="{{ (int) $m->id_toko }}"
                     {{ $m->status === 'rented' ? 'disabled' : '' }}
                   >
                     {{ $m->toko->nama ?? 'Toko' }} — {{ $m->nama }}
@@ -105,7 +106,7 @@
                     </thead>
                     <tbody>
                       @foreach ($additionalItems as $item)
-                        <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}">
+                        <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
                           <td>{{ $item->nama }}</td>
                           <td class="text-end font-monospace small">{{ $fmtRp($item->harga) }}</td>
                           <td>
@@ -211,15 +212,38 @@
     const items = [];
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
       const qty = parseInt(inp.value, 10) || 0;
-      if (qty > 0) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
+      const row = inp.closest('tr');
+      const hidden = row && row.classList.contains('d-none');
+      if (qty > 0 && !hidden) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
     });
     return items;
+  }
+
+  function syncAdditionalItemsByToko() {
+    const canSeeAll = @json(\App\Support\TokoScope::canSeeAll());
+    if (!canSeeAll) return;
+    const opt = mejaEl?.selectedOptions[0];
+    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || 0;
+
+    document.querySelectorAll('tr[data-item-id][data-item-toko]').forEach(function (row) {
+      const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
+      const hide = tokoId ? itemToko !== tokoId : false;
+      row.classList.toggle('d-none', hide);
+      if (hide) {
+        row.querySelectorAll('input.manual-additional-qty').forEach(function (inp) {
+          inp.value = '0';
+        });
+        const cell = row.querySelector('.manual-line-total');
+        if (cell) cell.textContent = fmtRp(0);
+      }
+    });
   }
 
   function additionalTotal() {
     let sum = 0;
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
       const row = inp.closest('tr');
+      if (row && row.classList.contains('d-none')) return;
       const harga = parseFloat(row?.getAttribute('data-item-harga') || '0');
       const qty = parseInt(inp.value, 10) || 0;
       sum += harga * qty;
@@ -254,11 +278,14 @@
     document.getElementById('bukti_required')?.classList.toggle('d-none', tunai);
     const help = document.getElementById('bukti_help');
     if (help) {
-      help.textContent = tunai ? 'Opsional untuk tunai.' : 'Wajib untuk metode non-tunai.';
+      help.textContent = 'Opsional. Dapat dilengkapi nanti di menu Data Sewa.';
     }
   }
 
-  mejaEl?.addEventListener('change', recalcTotals);
+  mejaEl?.addEventListener('change', function () {
+    syncAdditionalItemsByToko();
+    recalcTotals();
+  });
   jamEl?.addEventListener('input', recalcTotals);
   document.querySelectorAll('input[name="tipe_customer"]').forEach(function (i) {
     i.addEventListener('change', recalcTotals);
@@ -270,7 +297,27 @@
   jumlahBayarEl?.addEventListener('input', function () { jumlahBayarEl.dataset.auto = '0'; });
 
   syncBukti();
+  syncAdditionalItemsByToko();
   recalcTotals();
+
+  function confirmProceedWithoutBukti(onConfirm) {
+    const message = 'Anda belum mengunggah bukti pembayaran. Lanjutkan tanpa bukti? Bukti dapat dilengkapi nanti di menu Data Sewa.';
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Bukti belum diunggah',
+        text: message,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, lanjutkan',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#0d6efd',
+      }).then(function (result) {
+        if (result.isConfirmed) onConfirm();
+      });
+      return;
+    }
+    if (window.confirm(message)) onConfirm();
+  }
 
   form?.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -295,53 +342,58 @@
       alertEl.classList.remove('d-none');
       return;
     }
-    if (metode !== 'tunai' && !hasBukti) {
-      alertEl.textContent = 'Bukti wajib untuk metode non-tunai.';
-      alertEl.classList.remove('d-none');
+
+    const btn = document.getElementById('manualSubmitBtn');
+
+    function doSubmit() {
+      btn.disabled = true;
+
+      const fd = new FormData();
+      fd.append('tanggal', document.getElementById('tanggal').value);
+      fd.append('id_meja', mejaEl.value);
+      fd.append('nama_customer', document.getElementById('nama_customer').value.trim());
+      fd.append('tipe_customer', document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member');
+      fd.append('jam_ditagihkan', jamEl.value);
+      fd.append('additional_items', JSON.stringify(collectAdditional()));
+      fd.append('metode_pembayaran', metode);
+      fd.append('jumlah_bayar', String(jumlahBayar));
+      if (hasBukti) fd.append('bukti', buktiEl.files[0]);
+
+      fetch(storeUrl, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+        body: fd,
+      })
+        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+        .then(function (r) {
+          if (r.ok) {
+            if (r.body?.invoice_url) window.open(r.body.invoice_url, '_blank', 'noopener,noreferrer');
+            AppToast.saveForReload(r.body?.message || 'Tersimpan.');
+            window.location.href = @json(route('rental.manual.index'));
+            return;
+          }
+          btn.disabled = false;
+          let msg = r.body?.message || 'Gagal menyimpan.';
+          if (r.status === 422 && r.body?.errors) {
+            const first = Object.values(r.body.errors)[0];
+            msg = Array.isArray(first) ? first[0] : String(first);
+          }
+          alertEl.textContent = msg;
+          alertEl.classList.remove('d-none');
+          AppToast.show(msg, 'danger');
+        })
+        .catch(function () {
+          btn.disabled = false;
+          AppToast.show('Jaringan bermasalah.', 'danger');
+        });
+    }
+
+    if (!hasBukti) {
+      confirmProceedWithoutBukti(doSubmit);
       return;
     }
 
-    const btn = document.getElementById('manualSubmitBtn');
-    btn.disabled = true;
-
-    const fd = new FormData();
-    fd.append('tanggal', document.getElementById('tanggal').value);
-    fd.append('id_meja', mejaEl.value);
-    fd.append('nama_customer', document.getElementById('nama_customer').value.trim());
-    fd.append('tipe_customer', document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member');
-    fd.append('jam_ditagihkan', jamEl.value);
-    fd.append('additional_items', JSON.stringify(collectAdditional()));
-    fd.append('metode_pembayaran', metode);
-    fd.append('jumlah_bayar', String(jumlahBayar));
-    if (hasBukti) fd.append('bukti', buktiEl.files[0]);
-
-    fetch(storeUrl, {
-      method: 'POST',
-      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
-      body: fd,
-    })
-      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
-      .then(function (r) {
-        if (r.ok) {
-          if (r.body?.invoice_url) window.open(r.body.invoice_url, '_blank', 'noopener,noreferrer');
-          AppToast.saveForReload(r.body?.message || 'Tersimpan.');
-          window.location.href = @json(route('rental.manual.index'));
-          return;
-        }
-        btn.disabled = false;
-        let msg = r.body?.message || 'Gagal menyimpan.';
-        if (r.status === 422 && r.body?.errors) {
-          const first = Object.values(r.body.errors)[0];
-          msg = Array.isArray(first) ? first[0] : String(first);
-        }
-        alertEl.textContent = msg;
-        alertEl.classList.remove('d-none');
-        AppToast.show(msg, 'danger');
-      })
-      .catch(function () {
-        btn.disabled = false;
-        AppToast.show('Jaringan bermasalah.', 'danger');
-      });
+    doSubmit();
   });
 })();
 </script>

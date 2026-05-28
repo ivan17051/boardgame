@@ -28,9 +28,13 @@
             <h3 class="card-title mb-0">Semua Toko</h3>
           </div>
           <div class="col-md-6 text-end">
-            <button type="button" class="btn btn-primary btn-sm" id="btn-add-toko" data-bs-toggle="modal" data-bs-target="#tokoModal">
-              <i class="bi bi-shop me-1"></i> Tambah toko
-            </button>
+            @if ($canManageTokos)
+              <button type="button" class="btn btn-primary btn-sm" id="btn-add-toko" data-bs-toggle="modal" data-bs-target="#tokoModal">
+                <i class="bi bi-shop me-1"></i> Tambah toko
+              </button>
+            @else
+              <span class="badge text-bg-light border">Anda hanya bisa mengubah toko Anda</span>
+            @endif
           </div>
         </div>
       </div>
@@ -64,17 +68,19 @@
                     >
                       <i class="bi bi-pencil"></i>
                     </button>
-                    <button
-                      type="button"
-                      class="btn btn-outline-danger btn-sm btn-delete-toko"
-                      data-bs-toggle="modal"
-                      data-bs-target="#deleteTokoModal"
-                      data-toko-id="{{ $toko->id }}"
-                      data-name="{{ $toko->nama }}"
-                      title="Hapus"
-                    >
-                      <i class="bi bi-trash"></i>
-                    </button>
+                    @if ($canManageTokos)
+                      <button
+                        type="button"
+                        class="btn btn-outline-danger btn-sm btn-delete-toko"
+                        data-bs-toggle="modal"
+                        data-bs-target="#deleteTokoModal"
+                        data-toko-id="{{ $toko->id }}"
+                        data-name="{{ $toko->nama }}"
+                        title="Hapus"
+                      >
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    @endif
                   </td>
                 </tr>
               @empty
@@ -92,10 +98,10 @@
 
 <!-- Modal tambah / ubah -->
 <div class="modal fade" id="tokoModal" tabindex="-1" aria-labelledby="tokoModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+  <div class="modal-dialog modal-dialog-centered modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="tokoModalLabel">Tambah toko</h5>
+        <h5 class="modal-title" id="tokoModalLabel">{{ $canManageTokos ? 'Tambah toko' : 'Ubah toko' }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
       </div>
       <form id="tokoForm" novalidate action="{{ route('toko.store') }}" method="POST" data-no-page-loader>
@@ -195,6 +201,8 @@
 <script>
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  const canManageTokos = @json($canManageTokos);
+  const defaultTitle = canManageTokos ? 'Tambah toko' : 'Ubah toko';
   const routes = {
     store: @json(route('toko.store')),
     update: (id) => @json(url('/toko')) + '/' + id,
@@ -525,7 +533,7 @@
 
   document.getElementById('btn-add-toko')?.addEventListener('click', () => {
     resetTokoForm();
-    titleEl.textContent = 'Tambah toko';
+    titleEl.textContent = defaultTitle;
     jumlahMejaInput.value = '0';
   });
 
@@ -576,7 +584,7 @@
 
   tokoModalEl?.addEventListener('hidden.bs.modal', () => {
     resetTokoForm();
-    titleEl.textContent = 'Tambah toko';
+    titleEl.textContent = defaultTitle;
   });
 
   document.querySelectorAll('.btn-delete-toko').forEach((btn) => {

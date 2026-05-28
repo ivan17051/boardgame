@@ -297,7 +297,7 @@ class RentalHistoryController extends Controller
     {
         switch ($rental->kelengkapanStatus()) {
             case 'lengkap':
-                return '<span class="badge text-bg-success">Paid</span>';
+                return '<span class="badge text-bg-success">Lengkap</span>';
             case 'sebagian':
                 return '<span class="badge text-bg-info text-dark">Sebagian</span>';
             default:

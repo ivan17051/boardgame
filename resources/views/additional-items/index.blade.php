@@ -33,6 +33,9 @@
           <table class="table table-striped table-hover mb-0">
             <thead class="table-light">
               <tr>
+                @if ($canAssignAnyToko)
+                  <th>Toko</th>
+                @endif
                 <th>Nama</th>
                 <th class="text-end">Harga</th>
                 <th>Status</th>
@@ -42,6 +45,9 @@
             <tbody>
               @forelse ($items as $item)
                 <tr>
+                  @if ($canAssignAnyToko)
+                    <td class="small">{{ $item->toko->nama ?? ('Toko #'.$item->id_toko) }}</td>
+                  @endif
                   <td>{{ $item->nama }}</td>
                   <td class="text-end font-monospace">Rp {{ number_format((float) $item->harga, 0, ',', '.') }}</td>
                   <td>
@@ -53,7 +59,7 @@
                   </td>
                   <td class="text-end">
                     <button type="button" class="btn btn-sm btn-outline-secondary btn-edit-item" data-bs-toggle="modal" data-bs-target="#itemModal"
-                      data-id="{{ $item->id }}" data-nama="{{ $item->nama }}" data-harga="{{ $item->harga }}" data-active="{{ $item->is_active ? '1' : '0' }}">
+                      data-id="{{ $item->id }}" data-nama="{{ $item->nama }}" data-harga="{{ $item->harga }}" data-active="{{ $item->is_active ? '1' : '0' }}" data-id-toko="{{ $item->id_toko }}">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-danger btn-delete-item" data-id="{{ $item->id }}" data-nama="{{ $item->nama }}">
@@ -62,7 +68,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="4" class="text-center text-secondary py-4">Belum ada item.</td></tr>
+                <tr><td colspan="{{ $canAssignAnyToko ? 5 : 4 }}" class="text-center text-secondary py-4">Belum ada item.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -83,6 +89,19 @@
         <div class="modal-body">
           <div id="itemAlert" class="alert alert-danger d-none"></div>
           <input type="hidden" id="item_id" />
+          @if ($canAssignAnyToko)
+            <div class="mb-3">
+              <label class="form-label" for="item_id_toko">Toko <span class="text-danger">*</span></label>
+              <select class="form-select" id="item_id_toko" required>
+                <option value="">— Pilih toko —</option>
+                @foreach ($tokos as $toko)
+                  <option value="{{ $toko->id }}">{{ $toko->nama }}</option>
+                @endforeach
+              </select>
+            </div>
+          @else
+            <input type="hidden" id="item_id_toko" value="{{ auth()->user()->id_toko }}" />
+          @endif
           <div class="mb-3">
             <label class="form-label" for="item_nama">Nama</label>
             <input type="text" class="form-control" id="item_nama" required maxlength="255" />
@@ -117,12 +136,16 @@
   };
   const modal = document.getElementById('itemModal');
   const form = document.getElementById('itemForm');
+  const canAssignAnyToko = @json($canAssignAnyToko);
+  const idTokoSelect = document.getElementById('item_id_toko');
+  const idTokoHidden = document.getElementById('item_id_toko');
 
   function resetForm() {
     document.getElementById('item_id').value = '';
     document.getElementById('item_nama').value = '';
     document.getElementById('item_harga').value = '';
     document.getElementById('item_active').checked = true;
+    if (idTokoSelect) idTokoSelect.value = '';
     document.getElementById('itemModalTitle').textContent = 'Tambah item';
     document.getElementById('itemAlert').classList.add('d-none');
   }
@@ -134,6 +157,7 @@
       document.getElementById('item_nama').value = btn.dataset.nama;
       document.getElementById('item_harga').value = btn.dataset.harga;
       document.getElementById('item_active').checked = btn.dataset.active === '1';
+      if (idTokoSelect) idTokoSelect.value = btn.dataset.idToko || '';
       document.getElementById('itemModalTitle').textContent = 'Ubah item';
     });
   });
@@ -141,11 +165,15 @@
   form?.addEventListener('submit', function (e) {
     e.preventDefault();
     const id = document.getElementById('item_id').value;
+    const idTokoVal = idTokoSelect ? idTokoSelect.value : (idTokoHidden ? idTokoHidden.value : '');
     const payload = {
       nama: document.getElementById('item_nama').value.trim(),
       harga: parseFloat(document.getElementById('item_harga').value) || 0,
       is_active: document.getElementById('item_active').checked,
     };
+    if (canAssignAnyToko) {
+      payload.id_toko = parseInt(idTokoVal, 10) || 0;
+    }
     const url = id ? routes.update(id) : routes.store;
     const method = id ? 'PUT' : 'POST';
     fetch(url, {

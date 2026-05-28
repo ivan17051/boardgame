@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\AdditionalItem;
 use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
@@ -72,6 +73,15 @@ class TokoScope
         });
     }
 
+    public static function scopeAdditionalItems(Builder $query): Builder
+    {
+        if (self::canSeeAll()) {
+            return $query;
+        }
+
+        return $query->where('id_toko', self::userIdToko());
+    }
+
     public static function resolveIdTokoForSave($requested): int
     {
         if (self::canSeeAll()) {
@@ -132,5 +142,16 @@ class TokoScope
         }
 
         self::authorizeMeja($cashFlow->rental->meja);
+    }
+
+    public static function authorizeAdditionalItem(AdditionalItem $additionalItem): void
+    {
+        if (self::canSeeAll()) {
+            return;
+        }
+
+        if ((int) $additionalItem->id_toko !== self::userIdToko()) {
+            abort(403);
+        }
     }
 }

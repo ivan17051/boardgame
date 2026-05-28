@@ -31,10 +31,13 @@ class ManualRentalController extends Controller
 
         $additionalItems = collect();
         if (Schema::hasTable('m_additional_item')) {
-            $additionalItems = AdditionalItem::query()
+            $query = TokoScope::scopeAdditionalItems(AdditionalItem::query())
                 ->active()
-                ->orderBy('nama')
-                ->get(['id', 'nama', 'harga']);
+                ->orderBy('nama');
+
+            $additionalItems = TokoScope::canSeeAll()
+                ? $query->get(['id', 'id_toko', 'nama', 'harga'])
+                : $query->get(['id', 'nama', 'harga']);
         }
 
         return view('rental.manual', compact('mejas', 'additionalItems'));
@@ -69,12 +72,6 @@ class ManualRentalController extends Controller
             'metode_pembayaran.required' => 'Pilih metode pembayaran.',
             'jumlah_bayar.required' => 'Jumlah bayar wajib diisi.',
         ]);
-
-        if (RentalPayment::requiresBukti($validated['metode_pembayaran']) && ! $request->hasFile('bukti')) {
-            throw ValidationException::withMessages([
-                'bukti' => ['Bukti pembayaran wajib untuk metode non-tunai.'],
-            ]);
-        }
 
         $result = DB::transaction(function () use ($validated, $request) {
             $meja = Meja::query()->whereKey($validated['id_meja'])->firstOrFail();

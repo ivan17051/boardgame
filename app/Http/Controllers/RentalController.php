@@ -35,10 +35,13 @@ class RentalController extends Controller
 
         $additionalItems = collect();
         if (Schema::hasTable('m_additional_item')) {
-            $additionalItems = AdditionalItem::query()
+            $query = TokoScope::scopeAdditionalItems(AdditionalItem::query())
                 ->active()
-                ->orderBy('nama')
-                ->get(['id', 'nama', 'harga']);
+                ->orderBy('nama');
+
+            $additionalItems = TokoScope::canSeeAll()
+                ? $query->get(['id', 'id_toko', 'nama', 'harga'])
+                : $query->get(['id', 'nama', 'harga']);
         }
 
         return view('rental.index', compact('tokos', 'additionalItems'));

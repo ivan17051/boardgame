@@ -45,6 +45,7 @@
                   data-meja-id="{{ $meja->id }}"
                   data-meja-nama="{{ $meja->nama }}"
                   data-toko-nama="{{ $toko->nama }}"
+                  data-toko-id="{{ $toko->id }}"
                   data-harga-non-member="{{ (float) $meja->harga }}"
                   data-harga-member="{{ (float) ($meja->harga_member ?? $meja->harga) }}"
                   @if ($occupied)
@@ -145,7 +146,7 @@
             </thead>
             <tbody>
               @forelse ($additionalItems as $item)
-                <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}">
+                <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
                   <td>{{ $item->nama }}</td>
                   <td class="text-end font-monospace small">{{ $fmtRp($item->harga) }}</td>
                   <td>
@@ -224,10 +225,21 @@
 @endpush
 
 @push('scripts')
+@php
+  $masterItemsForJs = $additionalItems->map(function ($i) {
+    return [
+      'id' => $i->id,
+      'id_toko' => (int) ($i->id_toko ?? 0),
+      'nama' => $i->nama,
+      'harga' => (float) $i->harga,
+    ];
+  })->values();
+  $canSeeAllToko = \App\Support\TokoScope::canSeeAll();
+@endphp
 <script>
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-  const masterItems = @json($additionalItems->map(fn ($i) => ['id' => $i->id, 'nama' => $i->nama, 'harga' => (float) $i->harga]));
+  const masterItems = @json($masterItemsForJs);
   const routes = {
     store: @json(route('rental.store')),
     checkoutPreview: (id) => @json(url('/sewa')) + '/' + id + '/checkout-preview',
@@ -359,6 +371,18 @@
     checkoutEndedAt = Math.floor(Date.now() / 1000);
     checkoutGrandTotal = 0;
     document.getElementById('checkoutMejaLabel').textContent = btn.getAttribute('data-meja-nama') || 'Meja';
+    const tokoId = parseInt(btn.getAttribute('data-toko-id') || '0', 10) || 0;
+    const canSeeAll = @json($canSeeAllToko);
+    if (canSeeAll && tokoId) {
+      document.querySelectorAll('#additionalItemsTable tbody tr[data-item-id]').forEach(function (row) {
+        const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
+        row.classList.toggle('d-none', itemToko !== tokoId);
+      });
+    } else {
+      document.querySelectorAll('#additionalItemsTable tbody tr[data-item-id]').forEach(function (row) {
+        row.classList.remove('d-none');
+      });
+    }
     resetAdditionalQty();
     resetCheckoutPaymentFields();
     document.getElementById('checkoutSummary').innerHTML = '<p class="mb-0 text-secondary">Memuat…</p>';
@@ -483,6 +507,25 @@
     checkoutJumlahBayarEl.dataset.auto = '0';
   });
 
+  function confirmProceedWithoutBukti(onConfirm) {
+    const message = 'Anda belum mengunggah bukti pembayaran. Lanjutkan tanpa bukti? Bukti dapat dilengkapi nanti di menu Data Sewa.';
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Bukti belum diunggah',
+        text: message,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, lanjutkan',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#0d6efd',
+      }).then(function (result) {
+        if (result.isConfirmed) onConfirm();
+      });
+      return;
+    }
+    if (window.confirm(message)) onConfirm();
+  }
+
   document.getElementById('checkoutConfirmBtn')?.addEventListener('click', function () {
     if (!checkoutRentalId) return;
     hideCheckoutPaymentAlert();
@@ -501,50 +544,60 @@
     }
 
     const btn = this;
-    btn.disabled = true;
 
-    const fd = new FormData();
-    fd.append('ended_at', String(checkoutEndedAt));
-    fd.append('additional_items', JSON.stringify(collectAdditionalItems()));
-    if (metode) {
-      fd.append('metode_pembayaran', metode);
-      fd.append('jumlah_bayar', String(jumlahBayar));
-      if (hasBukti) {
-        fd.append('bukti', checkoutBuktiEl.files[0]);
+    function doCheckout() {
+      btn.disabled = true;
+
+      const fd = new FormData();
+      fd.append('ended_at', String(checkoutEndedAt));
+      fd.append('additional_items', JSON.stringify(collectAdditionalItems()));
+      if (metode) {
+        fd.append('metode_pembayaran', metode);
+        fd.append('jumlah_bayar', String(jumlahBayar));
+        if (hasBukti) {
+          fd.append('bukti', checkoutBuktiEl.files[0]);
+        }
       }
+
+      fetch(routes.checkout(checkoutRentalId), {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+        body: fd,
+      })
+        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+        .then(function (r) {
+          if (r.ok) {
+            checkoutModal?.hide();
+            const msg = r.body?.message || 'Checkout selesai.';
+            if (r.body?.invoice_url) {
+              window.open(r.body.invoice_url, '_blank', 'noopener,noreferrer');
+            }
+            AppToast.saveForReload(msg);
+            window.location.reload();
+            return;
+          }
+          btn.disabled = false;
+          let errMsg = r.body?.message || 'Checkout gagal.';
+          if (r.status === 422 && r.body?.errors) {
+            const first = Object.values(r.body.errors)[0];
+            errMsg = Array.isArray(first) ? first[0] : String(first);
+          }
+          showCheckoutPaymentAlert(errMsg);
+          AppToast.show(errMsg, 'danger');
+        })
+        .catch(function () {
+          btn.disabled = false;
+          showCheckoutPaymentAlert('Jaringan bermasalah.');
+          AppToast.show('Jaringan bermasalah.', 'danger');
+        });
     }
 
-    fetch(routes.checkout(checkoutRentalId), {
-      method: 'POST',
-      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
-      body: fd,
-    })
-      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
-      .then(function (r) {
-        if (r.ok) {
-          checkoutModal?.hide();
-          const msg = r.body?.message || 'Checkout selesai.';
-          if (r.body?.invoice_url) {
-            window.open(r.body.invoice_url, '_blank', 'noopener,noreferrer');
-          }
-          AppToast.saveForReload(msg);
-          window.location.reload();
-          return;
-        }
-        btn.disabled = false;
-        let errMsg = r.body?.message || 'Checkout gagal.';
-        if (r.status === 422 && r.body?.errors) {
-          const first = Object.values(r.body.errors)[0];
-          errMsg = Array.isArray(first) ? first[0] : String(first);
-        }
-        showCheckoutPaymentAlert(errMsg);
-        AppToast.show(errMsg, 'danger');
-      })
-      .catch(function () {
-        btn.disabled = false;
-        showCheckoutPaymentAlert('Jaringan bermasalah.');
-        AppToast.show('Jaringan bermasalah.', 'danger');
-      });
+    if (!hasBukti) {
+      confirmProceedWithoutBukti(doCheckout);
+      return;
+    }
+
+    doCheckout();
   });
 
   checkoutModalEl?.addEventListener('hidden.bs.modal', function () {
