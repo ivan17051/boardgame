@@ -8,6 +8,7 @@ use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class RentalPromoController extends Controller
 {
@@ -34,6 +35,8 @@ class RentalPromoController extends Controller
             'promo_duration_limit' => ['required', 'numeric', 'min:0.01', 'max:999'],
             'jam_mulai' => ['required', 'date_format:H:i'],
             'jam_selesai' => ['required', 'date_format:H:i'],
+            'tgl_awal' => ['nullable', 'date'],
+            'tgl_akhir' => ['nullable', 'date'],
             'is_active' => ['nullable', 'boolean'],
             'id_toko' => $canAssignAnyToko
                 ? ['required', 'integer', 'min:1', Rule::exists('m_toko', 'id')]
@@ -52,6 +55,8 @@ class RentalPromoController extends Controller
             TokoScope::authorizeToko(Toko::query()->findOrFail($idToko));
         }
 
+        $this->validatePromoDateRange($validated);
+
         $now = now();
         $uid = auth()->id();
 
@@ -62,6 +67,8 @@ class RentalPromoController extends Controller
             'promo_duration_limit' => $validated['promo_duration_limit'],
             'jam_mulai' => RentalPromo::normalizeTimeString($validated['jam_mulai'].':00'),
             'jam_selesai' => RentalPromo::normalizeTimeString($validated['jam_selesai'].':00'),
+            'tgl_awal' => $validated['tgl_awal'] ?? null,
+            'tgl_akhir' => $validated['tgl_akhir'] ?? null,
             'is_active' => $request->boolean('is_active', true),
             'idc' => $uid,
             'idm' => $uid,
@@ -84,11 +91,15 @@ class RentalPromoController extends Controller
             'promo_duration_limit' => ['required', 'numeric', 'min:0.01', 'max:999'],
             'jam_mulai' => ['required', 'date_format:H:i'],
             'jam_selesai' => ['required', 'date_format:H:i'],
+            'tgl_awal' => ['nullable', 'date'],
+            'tgl_akhir' => ['nullable', 'date'],
             'is_active' => ['nullable', 'boolean'],
             'id_toko' => $canAssignAnyToko
                 ? ['required', 'integer', 'min:1', Rule::exists('m_toko', 'id')]
                 : ['nullable'],
         ]);
+
+        $this->validatePromoDateRange($validated);
 
         $update = [
             'nama' => $validated['nama'],
@@ -96,6 +107,8 @@ class RentalPromoController extends Controller
             'promo_duration_limit' => $validated['promo_duration_limit'],
             'jam_mulai' => RentalPromo::normalizeTimeString($validated['jam_mulai'].':00'),
             'jam_selesai' => RentalPromo::normalizeTimeString($validated['jam_selesai'].':00'),
+            'tgl_awal' => $validated['tgl_awal'] ?? null,
+            'tgl_akhir' => $validated['tgl_akhir'] ?? null,
             'is_active' => $request->boolean('is_active', true),
             'dom' => now(),
             'idm' => auth()->id(),
@@ -117,5 +130,20 @@ class RentalPromoController extends Controller
         $rentalPromo->delete();
 
         return response()->json(['message' => 'Promo sewa dihapus.']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function validatePromoDateRange(array $validated): void
+    {
+        $awal = $validated['tgl_awal'] ?? null;
+        $akhir = $validated['tgl_akhir'] ?? null;
+
+        if ($awal && $akhir && $akhir < $awal) {
+            throw ValidationException::withMessages([
+                'tgl_akhir' => ['Tanggal akhir harus sama atau setelah tanggal mulai.'],
+            ]);
+        }
     }
 }

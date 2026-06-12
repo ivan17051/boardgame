@@ -18,8 +18,8 @@
 <div class="app-content">
   <div class="container-fluid">
     <div class="alert alert-info small">
-      Atur <strong>jam mulai–selesai</strong> (mis. Happy Hour 12:00–15:00). Promo hanya bisa dipilih saat check-in dalam jam tersebut.
-      Saat checkout, tarif promo hanya untuk menit sewa di dalam jendela jam itu (hingga batas durasi promo).
+      Atur <strong>tanggal berlaku</strong> (opsional) dan <strong>jam harian</strong>.
+      Kosongkan tanggal = tanpa batas periode; isi salah satu atau keduanya untuk membatasi tanggal.
     </div>
     <div class="card">
       <div class="card-header">
@@ -43,6 +43,7 @@
                 <th>Nama</th>
                 <th class="text-end">Tarif promo / jam</th>
                 <th class="text-end">Batas jam promo</th>
+                <th>Periode</th>
                 <th>Jam berlaku</th>
                 <th>Status</th>
                 <th class="text-end" style="width:120px">Aksi</th>
@@ -57,6 +58,7 @@
                   <td>{{ $promo->nama }}</td>
                   <td class="text-end font-monospace">Rp {{ number_format((float) $promo->promo_hourly_rate, 0, ',', '.') }}</td>
                   <td class="text-end">{{ number_format((float) $promo->promo_duration_limit, 2, ',', '.') }} jam</td>
+                  <td class="small">{{ $promo->periodeFormatted() }}</td>
                   <td class="small font-monospace">{{ $promo->jamMulaiFormatted() }} – {{ $promo->jamSelesaiFormatted() }}</td>
                   <td>
                     @if ($promo->is_active)
@@ -73,6 +75,8 @@
                       data-limit="{{ $promo->promo_duration_limit }}"
                       data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
                       data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
+                      data-tgl-awal="{{ $promo->tgl_awal ? $promo->tgl_awal->format('Y-m-d') : '' }}"
+                      data-tgl-akhir="{{ $promo->tgl_akhir ? $promo->tgl_akhir->format('Y-m-d') : '' }}"
                       data-active="{{ $promo->is_active ? '1' : '0' }}"
                       data-id-toko="{{ $promo->id_toko }}">
                       <i class="bi bi-pencil"></i>
@@ -83,7 +87,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="{{ $canAssignAnyToko ? 7 : 6 }}" class="text-center text-secondary py-4">Belum ada promo.</td></tr>
+                <tr><td colspan="{{ $canAssignAnyToko ? 8 : 7 }}" class="text-center text-secondary py-4">Belum ada promo.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -132,6 +136,18 @@
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6">
+              <label class="form-label" for="promo_tgl_awal">Tanggal mulai</label>
+              <input type="date" class="form-control" id="promo_tgl_awal" />
+              <div class="form-text">Opsional. Kosong = tidak ada batas awal.</div>
+            </div>
+            <div class="col-6">
+              <label class="form-label" for="promo_tgl_akhir">Tanggal akhir</label>
+              <input type="date" class="form-control" id="promo_tgl_akhir" />
+              <div class="form-text">Opsional. Kosong = tidak ada batas akhir.</div>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
               <label class="form-label" for="promo_jam_mulai">Jam mulai <span class="text-danger">*</span></label>
               <input type="time" class="form-control" id="promo_jam_mulai" required value="12:00" />
             </div>
@@ -175,6 +191,8 @@
     document.getElementById('promo_nama').value = '';
     document.getElementById('promo_hourly_rate').value = '';
     document.getElementById('promo_duration_limit').value = '';
+    document.getElementById('promo_tgl_awal').value = '';
+    document.getElementById('promo_tgl_akhir').value = '';
     document.getElementById('promo_jam_mulai').value = '12:00';
     document.getElementById('promo_jam_selesai').value = '15:00';
     document.getElementById('promo_active').checked = true;
@@ -190,6 +208,8 @@
       document.getElementById('promo_nama').value = btn.dataset.nama;
       document.getElementById('promo_hourly_rate').value = btn.dataset.rate;
       document.getElementById('promo_duration_limit').value = btn.dataset.limit;
+      document.getElementById('promo_tgl_awal').value = btn.dataset.tglAwal || '';
+      document.getElementById('promo_tgl_akhir').value = btn.dataset.tglAkhir || '';
       document.getElementById('promo_jam_mulai').value = btn.dataset.jamMulai || '12:00';
       document.getElementById('promo_jam_selesai').value = btn.dataset.jamSelesai || '15:00';
       document.getElementById('promo_active').checked = btn.dataset.active === '1';
@@ -206,6 +226,8 @@
       nama: document.getElementById('promo_nama').value.trim(),
       promo_hourly_rate: parseFloat(document.getElementById('promo_hourly_rate').value) || 0,
       promo_duration_limit: parseFloat(document.getElementById('promo_duration_limit').value) || 0,
+      tgl_awal: document.getElementById('promo_tgl_awal').value || null,
+      tgl_akhir: document.getElementById('promo_tgl_akhir').value || null,
       jam_mulai: document.getElementById('promo_jam_mulai').value,
       jam_selesai: document.getElementById('promo_jam_selesai').value,
       is_active: document.getElementById('promo_active').checked,

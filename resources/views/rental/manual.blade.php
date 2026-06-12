@@ -95,7 +95,7 @@
                       data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
                       data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
                     >
-                      {{ $promo->nama }} — {{ $fmtRp($promo->promo_hourly_rate) }}/jam · {{ $promo->jamMulaiFormatted() }}–{{ $promo->jamSelesaiFormatted() }}
+                      {{ $promo->nama }} — {{ $fmtRp($promo->promo_hourly_rate) }}/jam · {{ $promo->periodeFormatted() }} · {{ $promo->jamMulaiFormatted() }}–{{ $promo->jamSelesaiFormatted() }}
                     </option>
                   @endforeach
                 </select>

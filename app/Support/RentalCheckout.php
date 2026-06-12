@@ -120,7 +120,9 @@ class RentalCheckout
         CarbonInterface $start,
         CarbonInterface $end,
         ?string $jamMulai,
-        ?string $jamSelesai
+        ?string $jamSelesai,
+        ?string $tglAwal = null,
+        ?string $tglAkhir = null
     ): float {
         if ($end->lte($start)) {
             return 0.0;
@@ -128,11 +130,23 @@ class RentalCheckout
 
         $mulai = RentalPromo::normalizeTimeString($jamMulai);
         $selesai = RentalPromo::normalizeTimeString($jamSelesai);
+        $tglAwal = RentalPromo::normalizeDateString($tglAwal);
+        $tglAkhir = RentalPromo::normalizeDateString($tglAkhir);
         $promoSeconds = 0;
         $cursor = $start->copy()->startOfDay();
         $lastDay = $end->copy()->startOfDay();
 
         while ($cursor->lte($lastDay)) {
+            $dayDate = $cursor->format('Y-m-d');
+            if ($tglAwal && $dayDate < $tglAwal) {
+                $cursor->addDay();
+                continue;
+            }
+            if ($tglAkhir && $dayDate > $tglAkhir) {
+                $cursor->addDay();
+                continue;
+            }
+
             $windowStart = $cursor->copy()->setTimeFromTimeString($mulai);
             $windowEnd = $cursor->copy()->setTimeFromTimeString($selesai);
             if ($mulai > $selesai) {
@@ -207,7 +221,9 @@ class RentalCheckout
      *   promo_hourly_rate: float,
      *   promo_duration_limit: float,
      *   promo_jam_mulai: string,
-     *   promo_jam_selesai: string
+     *   promo_jam_selesai: string,
+     *   promo_tgl_awal: string,
+     *   promo_tgl_akhir: string
      * }|null
      */
     public static function resolvePromoSnapshot(
@@ -243,6 +259,8 @@ class RentalCheckout
             'promo_duration_limit' => (float) $promo->promo_duration_limit,
             'promo_jam_mulai' => RentalPromo::normalizeTimeString($promo->jam_mulai),
             'promo_jam_selesai' => RentalPromo::normalizeTimeString($promo->jam_selesai),
+            'promo_tgl_awal' => RentalPromo::normalizeDateString($promo->tgl_awal) ?? '',
+            'promo_tgl_akhir' => RentalPromo::normalizeDateString($promo->tgl_akhir) ?? '',
         ];
     }
 
@@ -280,7 +298,9 @@ class RentalCheckout
                 $start,
                 $end,
                 $rental->promo_jam_mulai,
-                $rental->promo_jam_selesai
+                $rental->promo_jam_selesai,
+                $rental->promo_tgl_awal,
+                $rental->promo_tgl_akhir
             );
             $sewaCalc = self::computeTableRentalPriceFromSession(
                 $totalMinutes,
@@ -322,8 +342,17 @@ class RentalCheckout
             $namaPromo = htmlspecialchars($rental->promo_nama ?? 'Promo', ENT_QUOTES, 'UTF-8');
             $jamMulai = substr(RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5);
             $jamSelesai = substr(RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5);
+            $periodeLabel = 'tanpa batas tanggal';
+            if ($rental->promo_tgl_awal && $rental->promo_tgl_akhir) {
+                $periodeLabel = \Carbon\Carbon::parse($rental->promo_tgl_awal)->format('d/m/Y')
+                    .'–'.\Carbon\Carbon::parse($rental->promo_tgl_akhir)->format('d/m/Y');
+            } elseif ($rental->promo_tgl_awal) {
+                $periodeLabel = 'dari '.\Carbon\Carbon::parse($rental->promo_tgl_awal)->format('d/m/Y');
+            } elseif ($rental->promo_tgl_akhir) {
+                $periodeLabel = 'hingga '.\Carbon\Carbon::parse($rental->promo_tgl_akhir)->format('d/m/Y');
+            }
             $breakdownHtml .= '<li><strong>Promo</strong>: '.$namaPromo
-                .' — Rp '.$promoRateStr.' / jam (maks. '.$limitStr.' jam, jam '.$jamMulai.'–'.$jamSelesai.')</li>';
+                .' — Rp '.$promoRateStr.' / jam (maks. '.$limitStr.' jam, '.$periodeLabel.', jam '.$jamMulai.'–'.$jamSelesai.')</li>';
             if (($sewaCalc['promo_eligible_minutes'] ?? 0) > 0) {
                 $breakdownHtml .= '<li><strong>Durasi dalam jam promo</strong>: '
                     .number_format($sewaCalc['promo_eligible_minutes'], 2, ',', '.').' menit</li>';

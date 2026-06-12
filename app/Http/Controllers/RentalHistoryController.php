@@ -329,9 +329,13 @@ class RentalHistoryController extends Controller
         $editItem = '<li><button type="button" class="dropdown-item btn-rental-edit" data-id="'.$rentalId.'">'
             .'<i class="bi bi-pencil-square me-2"></i>Edit</button></li>';
 
-        $deleteItem = '<li><hr class="dropdown-divider"></li>'
-            .'<li><button type="button" class="dropdown-item text-danger btn-rental-delete" data-id="'.$rentalId.'" data-customer="'.$customer.'">'
-            .'<i class="bi bi-trash me-2"></i>Hapus</button></li>';
+        $deleteItem = '';
+        $user = auth()->user();
+        if ($user && $user->isAdmin()) {
+            $deleteItem = '<li><hr class="dropdown-divider"></li>'
+                .'<li><button type="button" class="dropdown-item text-danger btn-rental-delete" data-id="'.$rentalId.'" data-customer="'.$customer.'">'
+                .'<i class="bi bi-trash me-2"></i>Hapus</button></li>';
+        }
 
         return '<div class="dropdown text-end">'
             .'<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" aria-expanded="false" title="Aksi">'

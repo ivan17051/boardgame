@@ -20,6 +20,8 @@ class RentalPromo extends Model
         'promo_duration_limit',
         'jam_mulai',
         'jam_selesai',
+        'tgl_awal',
+        'tgl_akhir',
         'is_active',
         'idc',
         'idm',
@@ -31,6 +33,8 @@ class RentalPromo extends Model
         'id_toko' => 'integer',
         'promo_hourly_rate' => 'decimal:3',
         'promo_duration_limit' => 'decimal:2',
+        'tgl_awal' => 'date',
+        'tgl_akhir' => 'date',
         'is_active' => 'boolean',
         'doc' => 'datetime',
         'dom' => 'datetime',
@@ -48,20 +52,29 @@ class RentalPromo extends Model
 
     public function scopeActiveAt(Builder $query, CarbonInterface $at): Builder
     {
-        return $query->active()->where(function (Builder $q) use ($at) {
-            $time = $at->format('H:i:s');
-            $q->where(function (Builder $inner) use ($time) {
-                $inner->whereColumn('jam_mulai', '<=', 'jam_selesai')
-                    ->where('jam_mulai', '<=', $time)
-                    ->where('jam_selesai', '>=', $time);
-            })->orWhere(function (Builder $inner) use ($time) {
-                $inner->whereColumn('jam_mulai', '>', 'jam_selesai')
-                    ->where(function (Builder $overnight) use ($time) {
-                        $overnight->where('jam_mulai', '<=', $time)
-                            ->orWhere('jam_selesai', '>=', $time);
-                    });
+        $date = $at->format('Y-m-d');
+        $time = $at->format('H:i:s');
+
+        return $query->active()
+            ->where(function (Builder $q) use ($date) {
+                $q->whereNull('tgl_awal')->orWhere('tgl_awal', '<=', $date);
+            })
+            ->where(function (Builder $q) use ($date) {
+                $q->whereNull('tgl_akhir')->orWhere('tgl_akhir', '>=', $date);
+            })
+            ->where(function (Builder $q) use ($time) {
+                $q->where(function (Builder $inner) use ($time) {
+                    $inner->whereColumn('jam_mulai', '<=', 'jam_selesai')
+                        ->where('jam_mulai', '<=', $time)
+                        ->where('jam_selesai', '>=', $time);
+                })->orWhere(function (Builder $inner) use ($time) {
+                    $inner->whereColumn('jam_mulai', '>', 'jam_selesai')
+                        ->where(function (Builder $overnight) use ($time) {
+                            $overnight->where('jam_mulai', '<=', $time)
+                                ->orWhere('jam_selesai', '>=', $time);
+                        });
+                });
             });
-        });
     }
 
     public static function normalizeTimeString(?string $time): string
@@ -78,6 +91,19 @@ class RentalPromo extends Model
         return sprintf('%02d:%02d:%02d', $h, $m, $s);
     }
 
+    public static function normalizeDateString($date): ?string
+    {
+        if ($date === null || $date === '') {
+            return null;
+        }
+
+        if ($date instanceof CarbonInterface) {
+            return $date->format('Y-m-d');
+        }
+
+        return (string) $date;
+    }
+
     public function jamMulaiFormatted(): string
     {
         return substr(self::normalizeTimeString($this->jam_mulai), 0, 5);
@@ -88,9 +114,48 @@ class RentalPromo extends Model
         return substr(self::normalizeTimeString($this->jam_selesai), 0, 5);
     }
 
+    public function tglAwalFormatted(): string
+    {
+        return $this->tgl_awal ? $this->tgl_awal->format('d/m/Y') : '—';
+    }
+
+    public function tglAkhirFormatted(): string
+    {
+        return $this->tgl_akhir ? $this->tgl_akhir->format('d/m/Y') : '—';
+    }
+
+    public function periodeFormatted(): string
+    {
+        if (! $this->tgl_awal && ! $this->tgl_akhir) {
+            return 'Tanpa batas';
+        }
+
+        if ($this->tgl_awal && ! $this->tgl_akhir) {
+            return 'Dari '.$this->tglAwalFormatted();
+        }
+
+        if (! $this->tgl_awal && $this->tgl_akhir) {
+            return 'Hingga '.$this->tglAkhirFormatted();
+        }
+
+        return $this->tglAwalFormatted().' – '.$this->tglAkhirFormatted();
+    }
+
     public function isActiveAt(CarbonInterface $at): bool
     {
         if (! $this->is_active) {
+            return false;
+        }
+
+        $date = $at->format('Y-m-d');
+        $tglAwal = self::normalizeDateString($this->tgl_awal);
+        $tglAkhir = self::normalizeDateString($this->tgl_akhir);
+
+        if ($tglAwal && $date < $tglAwal) {
+            return false;
+        }
+
+        if ($tglAkhir && $date > $tglAkhir) {
             return false;
         }
 

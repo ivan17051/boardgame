@@ -102,7 +102,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/sewa/riwayat/data', [RentalHistoryController::class, 'data'])->name('rental.history.data');
     Route::get('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'show'])->name('rental.history.show');
     Route::put('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'update'])->name('rental.history.update');
-    Route::delete('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'destroy'])->name('rental.history.destroy');
+    Route::delete('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'destroy'])
+        ->middleware('admin')
+        ->name('rental.history.destroy');
     Route::get('/sewa/{rental}/invoice', [RentalController::class, 'invoice'])->name('rental.invoice');
     Route::get('/sewa/{rental}/bukti', [RentalController::class, 'showBukti'])->name('rental.bukti');
     Route::match(['get', 'post'], '/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');

@@ -46,7 +46,7 @@ class ManualRentalController extends Controller
             $rentalPromos = TokoScope::scopeRentalPromos(RentalPromo::query())
                 ->active()
                 ->orderBy('nama')
-                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai']);
+                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai', 'tgl_awal', 'tgl_akhir']);
         }
 
         return view('rental.manual', compact('mejas', 'additionalItems', 'rentalPromos'));
@@ -118,7 +118,9 @@ class ManualRentalController extends Controller
                     $waktuStart,
                     $waktuEnd,
                     $promoSnapshot['promo_jam_mulai'],
-                    $promoSnapshot['promo_jam_selesai']
+                    $promoSnapshot['promo_jam_selesai'],
+                    $promoSnapshot['promo_tgl_awal'] ?? null,
+                    $promoSnapshot['promo_tgl_akhir'] ?? null
                 );
                 $sewaCalc = RentalCheckout::computeTableRentalPriceFromSession(
                     $totalMinutes,
@@ -145,6 +147,10 @@ class ManualRentalController extends Controller
                 'promo_nama' => null,
                 'promo_hourly_rate' => null,
                 'promo_duration_limit' => null,
+                'promo_jam_mulai' => null,
+                'promo_jam_selesai' => null,
+                'promo_tgl_awal' => null,
+                'promo_tgl_akhir' => null,
             ];
             if ($promoSnapshot) {
                 $promoFields = [
@@ -154,6 +160,8 @@ class ManualRentalController extends Controller
                     'promo_duration_limit' => $promoSnapshot['promo_duration_limit'],
                     'promo_jam_mulai' => $promoSnapshot['promo_jam_mulai'],
                     'promo_jam_selesai' => $promoSnapshot['promo_jam_selesai'],
+                    'promo_tgl_awal' => $promoSnapshot['promo_tgl_awal'] ?: null,
+                    'promo_tgl_akhir' => $promoSnapshot['promo_tgl_akhir'] ?: null,
                 ];
             }
 

@@ -50,7 +50,7 @@ class RentalController extends Controller
             $rentalPromos = TokoScope::scopeRentalPromos(RentalPromo::query())
                 ->activeAt(now())
                 ->orderBy('nama')
-                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai']);
+                ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai', 'tgl_awal', 'tgl_akhir']);
         }
 
         return view('rental.index', compact('tokos', 'additionalItems', 'rentalPromos'));
@@ -314,6 +314,8 @@ class RentalController extends Controller
             'promo_duration_limit' => null,
             'promo_jam_mulai' => null,
             'promo_jam_selesai' => null,
+            'promo_tgl_awal' => null,
+            'promo_tgl_akhir' => null,
         ];
 
         if (! $idPromo) {
@@ -323,7 +325,7 @@ class RentalController extends Controller
         $snapshot = RentalCheckout::resolvePromoSnapshot($idPromo, (int) $meja->id_toko, $at, true);
         if (! $snapshot) {
             throw ValidationException::withMessages([
-                'id_promo' => ['Promo tidak berlaku saat ini (di luar jam promo) atau tidak aktif untuk toko meja ini.'],
+                'id_promo' => ['Promo tidak berlaku saat ini (di luar periode/tanggal atau jam promo) atau tidak aktif untuk toko meja ini.'],
             ]);
         }
 
@@ -334,6 +336,8 @@ class RentalController extends Controller
             'promo_duration_limit' => $snapshot['promo_duration_limit'],
             'promo_jam_mulai' => $snapshot['promo_jam_mulai'],
             'promo_jam_selesai' => $snapshot['promo_jam_selesai'],
+            'promo_tgl_awal' => $snapshot['promo_tgl_awal'] ?: null,
+            'promo_tgl_akhir' => $snapshot['promo_tgl_akhir'] ?: null,
         ];
     }
 

@@ -195,10 +195,20 @@
         <tr>
           <th>Promo</th>
           <td>
-            {{ $fmtRp($rental->promo_hourly_rate) }}/jam -
             {{ $rental->promo_nama }}
-              ({{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5) }}–{{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5) }}
-              , maks. {{ number_format((float) $rental->promo_duration_limit, 2, ',', '.') }} jam)
+            — {{ $fmtRp($rental->promo_hourly_rate) }}/jam
+            @if ($rental->promo_tgl_awal || $rental->promo_tgl_akhir)
+              ·
+              @if ($rental->promo_tgl_awal && $rental->promo_tgl_akhir)
+                {{ $rental->promo_tgl_awal->format('d/m/Y') }}–{{ $rental->promo_tgl_akhir->format('d/m/Y') }}
+              @elseif ($rental->promo_tgl_awal)
+                dari {{ $rental->promo_tgl_awal->format('d/m/Y') }}
+              @else
+                hingga {{ $rental->promo_tgl_akhir->format('d/m/Y') }}
+              @endif
+            @endif
+            · jam {{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5) }}–{{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5) }}
+            (maks. {{ number_format((float) $rental->promo_duration_limit, 2, ',', '.') }} jam ditagihkan)
           </td>
         </tr>
       @endif
