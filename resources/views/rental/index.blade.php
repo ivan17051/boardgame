@@ -225,6 +225,7 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="checkoutCancelBtn">Batalkan &amp; hapus sewa</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
         <button type="button" class="btn btn-primary" id="checkoutConfirmBtn" disabled>Checkout &amp; simpan pembayaran</button>
       </div>
@@ -265,6 +266,7 @@
     store: @json(route('rental.store')),
     checkoutPreview: (id) => @json(url('/sewa')) + '/' + id + '/checkout-preview',
     checkout: (id) => @json(url('/sewa')) + '/' + id + '/checkout',
+    cancel: (id) => @json(url('/sewa')) + '/' + id + '/cancel',
   };
 
   const checkinModalEl = document.getElementById('checkinModal');
@@ -284,6 +286,7 @@
   const checkoutBuktiRequiredMark = document.getElementById('checkout_bukti_required');
   const checkoutBuktiHelpEl = document.getElementById('checkout_bukti_help');
   const checkoutPaymentAlert = document.getElementById('checkoutPaymentAlert');
+  const checkoutCancelBtn = document.getElementById('checkoutCancelBtn');
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function formatHMS(totalSeconds) {
@@ -665,10 +668,60 @@
     doCheckout();
   });
 
+  checkoutCancelBtn?.addEventListener('click', function () {
+    if (!checkoutRentalId) return;
+    const btn = this;
+
+    function doCancel() {
+      btn.disabled = true;
+      fetch(routes.cancel(checkoutRentalId), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+      })
+        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+        .then(function (r) {
+          if (r.ok) {
+            checkoutModal?.hide();
+            AppToast.saveForReload(r.body?.message || 'Sewa dibatalkan.');
+            window.location.reload();
+            return;
+          }
+          btn.disabled = false;
+          const msg = r.body?.message || 'Gagal membatalkan sewa.';
+          showCheckoutPaymentAlert(msg);
+          AppToast.show(msg, 'danger');
+        })
+        .catch(function () {
+          btn.disabled = false;
+          showCheckoutPaymentAlert('Jaringan bermasalah.');
+          AppToast.show('Jaringan bermasalah.', 'danger');
+        });
+    }
+
+    const message = 'Batalkan dan hapus sewa yang sedang berjalan? Aksi ini tidak bisa dibatalkan.';
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Batalkan sewa?',
+        text: message,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, batalkan',
+        cancelButtonText: 'Kembali',
+        confirmButtonColor: '#dc3545',
+      }).then(function (result) {
+        if (result.isConfirmed) doCancel();
+      });
+      return;
+    }
+
+    if (window.confirm(message)) doCancel();
+  });
+
   checkoutModalEl?.addEventListener('hidden.bs.modal', function () {
     checkoutRentalId = null;
     checkoutEndedAt = null;
     checkoutGrandTotal = 0;
+    if (checkoutCancelBtn) checkoutCancelBtn.disabled = false;
     resetAdditionalQty();
     resetCheckoutPaymentFields();
   });

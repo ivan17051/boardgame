@@ -39,14 +39,37 @@
 
 <div class="app-content-header dashboard-page">
   <div class="container-fluid">
-    <div class="row">
+    <div class="row align-items-center">
       <div class="col-sm-6">
         <h3 class="mb-0">Dashboard</h3>
+        @if ($selectedToko)
+          <p class="text-secondary small mb-0 mt-1">{{ $selectedToko->nama }}</p>
+        @elseif ($canSeeAll)
+          <p class="text-secondary small mb-0 mt-1">Semua toko</p>
+        @endif
       </div>
       <div class="col-sm-6">
-        <ol class="breadcrumb float-sm-end">
-          <li class="breadcrumb-item active" aria-current="page">Beranda</li>
-        </ol>
+        <div class="d-flex flex-wrap justify-content-sm-end align-items-center gap-2 mt-2 mt-sm-0">
+          @if ($tokos->isNotEmpty())
+            <form method="get" action="{{ route('dashboard') }}" class="d-flex align-items-center gap-2" id="dashboardTokoFilterForm">
+              <label for="dashboard_toko_filter" class="form-label mb-0 small text-secondary">Toko</label>
+              <select
+                name="id_toko"
+                id="dashboard_toko_filter"
+                class="form-select form-select-sm"
+                style="min-width: 180px;"
+                @if (!$canSeeAll && $tokos->count() === 1) disabled @endif>
+                @if ($canSeeAll)
+                  <option value="" @if(!$selectedTokoId) selected @endif>Semua toko</option>
+                @endif
+                @foreach ($tokos as $toko)
+                  <option value="{{ $toko->id }}" @if($selectedTokoId === $toko->id) selected @endif>{{ $toko->nama }}</option>
+                @endforeach
+              </select>
+            </form>
+          @endif
+          
+        </div>
       </div>
     </div>
   </div>
@@ -234,6 +257,10 @@
     grid: { strokeDashArray: 4 },
   });
   chart.render();
+
+  document.getElementById('dashboard_toko_filter')?.addEventListener('change', function () {
+    document.getElementById('dashboardTokoFilterForm')?.submit();
+  });
 })();
 </script>
 @endpush

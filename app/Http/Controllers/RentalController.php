@@ -230,6 +230,39 @@ class RentalController extends Controller
         ]);
     }
 
+    public function cancel(Rental $rental): JsonResponse
+    {
+        if (! $rental->isActive()) {
+            abort(404);
+        }
+
+        TokoScope::authorizeRental($rental);
+
+        DB::transaction(function () use ($rental) {
+            $locked = Rental::query()
+                ->whereKey($rental->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked) {
+                abort(404);
+            }
+
+            Meja::query()
+                ->whereKey($locked->id_meja)
+                ->lockForUpdate()
+                ->update(['status' => 'active']);
+
+            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
+            $locked->delete();
+        });
+
+        return response()->json([
+            'message' => 'Sewa dibatalkan dan data rental dihapus.',
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */

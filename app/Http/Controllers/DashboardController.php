@@ -5,19 +5,33 @@ namespace App\Http\Controllers;
 use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
+use App\Models\Toko;
 use App\Support\TokoScope;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $tokos = TokoScope::scopeTokos(Toko::query())
+            ->orderBy('nama')
+            ->get(['id', 'nama']);
+
+        $canSeeAll = TokoScope::canSeeAll();
+        $selectedTokoId = $this->resolveSelectedTokoId($request, $tokos, $canSeeAll);
+        $selectedToko = $selectedTokoId
+            ? $tokos->firstWhere('id', $selectedTokoId)
+            : null;
+
         $today = now()->startOfDay();
         $monthStart = now()->startOfMonth();
 
-        $cashflowBase = TokoScope::scopeCashFlows(CashFlow::query())->where('tipe_transaksi', 'income');
-        $rentalBase = TokoScope::scopeRentals(Rental::query());
-        $mejaBase = TokoScope::scopeMejas(Meja::query());
+        $cashflowBase = $this->scopeCashFlowsForDashboard($selectedTokoId)
+            ->where('tipe_transaksi', 'income');
+        $rentalBase = $this->scopeRentalsForDashboard($selectedTokoId);
+        $mejaBase = $this->scopeMejasForDashboard($selectedTokoId);
 
         $stats = [
             'active_rentals' => (clone $rentalBase)->where('status', 'active')->count(),
@@ -74,7 +88,67 @@ class DashboardController extends Controller
             'stats',
             'chartLabels',
             'chartValues',
-            'recentCashflow'
+            'recentCashflow',
+            'tokos',
+            'selectedTokoId',
+            'selectedToko',
+            'canSeeAll'
         ));
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Toko>  $tokos
+     */
+    private function resolveSelectedTokoId(Request $request, $tokos, bool $canSeeAll): ?int
+    {
+        if ($request->filled('id_toko')) {
+            $id = (int) $request->query('id_toko');
+            if ($tokos->contains('id', $id)) {
+                return $id;
+            }
+        }
+
+        if (! $canSeeAll && $tokos->count() === 1) {
+            return (int) $tokos->first()->id;
+        }
+
+        return null;
+    }
+
+    private function scopeRentalsForDashboard(?int $tokoId): Builder
+    {
+        $query = TokoScope::scopeRentals(Rental::query());
+
+        if ($tokoId) {
+            $query->whereHas('meja', function (Builder $q) use ($tokoId) {
+                $q->where('id_toko', $tokoId);
+            });
+        }
+
+        return $query;
+    }
+
+    private function scopeMejasForDashboard(?int $tokoId): Builder
+    {
+        $query = TokoScope::scopeMejas(Meja::query());
+
+        if ($tokoId) {
+            $query->where('id_toko', $tokoId);
+        }
+
+        return $query;
+    }
+
+    private function scopeCashFlowsForDashboard(?int $tokoId): Builder
+    {
+        $query = TokoScope::scopeCashFlows(CashFlow::query());
+
+        if ($tokoId) {
+            $query->whereHas('rental.meja', function (Builder $q) use ($tokoId) {
+                $q->where('id_toko', $tokoId);
+            });
+        }
+
+        return $query;
     }
 }

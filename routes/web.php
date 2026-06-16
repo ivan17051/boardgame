@@ -110,6 +110,7 @@ Route::middleware('auth')->group(function () {
     Route::match(['get', 'post'], '/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
 
     Route::post('/sewa/{rental}/checkout', [RentalController::class, 'checkout'])->name('rental.checkout');
+    Route::delete('/sewa/{rental}/cancel', [RentalController::class, 'cancel'])->name('rental.cancel');
 
     Route::get('/cashflow/laporan', [CashFlowController::class, 'report'])->name('cashflow.report');
     Route::get('/cashflow/{cashFlow}/invoice', [CashFlowController::class, 'invoice'])->name('cashflow.invoice');
