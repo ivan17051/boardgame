@@ -104,7 +104,7 @@ class TokoController extends Controller
                 'idm' => 1,
             ]);
 
-            Meja::query()->where('id_toko', $toko->id)->delete();
+            $toko->meja()->get()->each->delete();
 
             foreach ($validated['meja'] as $row) {
                 Meja::query()->create([
@@ -132,7 +132,9 @@ class TokoController extends Controller
             abort(403);
         }
 
-        $toko->delete();
+        DB::transaction(function () use ($toko) {
+            $toko->delete();
+        });
 
         return response()->json(['message' => 'Toko dihapus.']);
     }

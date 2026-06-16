@@ -29,6 +29,15 @@ class Toko extends Model
         'jumlah_meja' => 'integer',
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function (self $toko) {
+            $toko->meja()->get()->each->delete();
+        });
+    }
+
     public function meja(): HasMany
     {
         return $this->hasMany(Meja::class, 'id_toko')->orderBy('id');

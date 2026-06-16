@@ -35,6 +35,18 @@ class Meja extends Model
         'dom' => 'datetime',
     ];
 
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function (self $meja) {
+            Rental::query()
+                ->where('id_meja', $meja->id)
+                ->get()
+                ->each->delete();
+        });
+    }
+
     public function toko(): BelongsTo
     {
         return $this->belongsTo(Toko::class, 'id_toko');
