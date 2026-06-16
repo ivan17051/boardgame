@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
-use App\Models\RentalAdditionalItem;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
 use App\Support\RentalPayment;
@@ -13,7 +12,6 @@ use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 class RentalHistoryController extends Controller
@@ -141,15 +139,6 @@ class RentalHistoryController extends Controller
                     ->update(['status' => 'active']);
             }
 
-            if ($locked->bukti_transaksi) {
-                $disk = Storage::disk('public');
-                if ($disk->exists($locked->bukti_transaksi)) {
-                    $disk->delete($locked->bukti_transaksi);
-                }
-            }
-
-            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
-            CashFlow::query()->where('id_rental', $locked->id)->delete();
             $locked->delete();
         });
 

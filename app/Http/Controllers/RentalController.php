@@ -254,7 +254,6 @@ class RentalController extends Controller
                 ->lockForUpdate()
                 ->update(['status' => 'active']);
 
-            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
             $locked->delete();
         });
 

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 
 class Rental extends Model
 {
@@ -58,6 +59,36 @@ class Rental extends Model
         'total' => 'decimal:3',
         'jumlah_bayar' => 'decimal:3',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::deleting(function (self $rental) {
+            $rental->deleteDependents();
+        });
+    }
+
+    public function deleteDependents(): void
+    {
+        $disk = Storage::disk('public');
+
+        CashFlow::query()
+            ->where('id_rental', $this->id)
+            ->get(['id', 'bukti_transaksi'])
+            ->each(function (CashFlow $flow) use ($disk) {
+                if ($flow->bukti_transaksi && $disk->exists($flow->bukti_transaksi)) {
+                    $disk->delete($flow->bukti_transaksi);
+                }
+            });
+
+        CashFlow::query()->where('id_rental', $this->id)->delete();
+        RentalAdditionalItem::query()->where('id_rental', $this->id)->delete();
+
+        if ($this->bukti_transaksi && $disk->exists($this->bukti_transaksi)) {
+            $disk->delete($this->bukti_transaksi);
+        }
+    }
 
     public function meja(): BelongsTo
     {
