@@ -37,8 +37,8 @@ class ManualRentalController extends Controller
                 ->orderBy('nama');
 
             $additionalItems = TokoScope::canSeeAll()
-                ? $query->get(['id', 'id_toko', 'nama', 'harga'])
-                : $query->get(['id', 'nama', 'harga']);
+                ? $query->get(['id', 'id_toko', 'nama', 'harga', 'is_discount'])
+                : $query->get(['id', 'nama', 'harga', 'is_discount']);
         }
 
         $rentalPromos = collect();
@@ -138,7 +138,7 @@ class ManualRentalController extends Controller
                 array_sum(array_column($additionalLines, 'subtotal')),
                 3
             );
-            $totalHarga = round($totalHargaSewa + $totalHargaAdditional, 3);
+            $totalHarga = max(0, round($totalHargaSewa + $totalHargaAdditional, 3));
 
             $at = $waktuEnd->copy();
 
@@ -245,7 +245,7 @@ class ManualRentalController extends Controller
             'dom' => $at,
         ]);
 
-        if ($totalHargaAdditional > 0) {
+        if ($totalHargaAdditional != 0) {
             CashFlow::query()->create([
                 'id_rental' => $rental->id,
                 'tipe_transaksi' => 'income',

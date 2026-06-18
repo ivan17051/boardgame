@@ -15,6 +15,7 @@ class AdditionalItem extends Model
         'id_toko',
         'nama',
         'harga',
+        'is_discount',
         'is_active',
         'idc',
         'idm',
@@ -25,6 +26,7 @@ class AdditionalItem extends Model
     protected $casts = [
         'id_toko' => 'integer',
         'harga' => 'decimal:3',
+        'is_discount' => 'boolean',
         'is_active' => 'boolean',
         'doc' => 'datetime',
         'dom' => 'datetime',

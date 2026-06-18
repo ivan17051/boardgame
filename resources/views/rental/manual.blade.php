@@ -114,22 +114,33 @@
             <hr class="my-4" />
             <div class="row">
               <div class="col-md-8">
-                <h6 class="fw-semibold">Item tambahan (F&amp;B)</h6>
+                <h6 class="fw-semibold">Item tambahan &amp; diskon</h6>
                 <div class="table-responsive">
                   <table class="table table-sm align-middle">
                     <thead class="table-light">
                       <tr>
                         <th>Item</th>
-                        <th class="text-end">Harga</th>
+                        <th class="text-end">Nilai</th>
                         <th style="width:90px">Qty</th>
                         <th class="text-end">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody>
                       @foreach ($additionalItems as $item)
-                        <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
-                          <td>{{ $item->nama }}</td>
-                          <td class="text-end font-monospace small">{{ $fmtRp($item->harga) }}</td>
+                        <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-discount="{{ $item->is_discount ? '1' : '0' }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
+                          <td>
+                            {{ $item->nama }}
+                            @if ($item->is_discount)
+                              <span class="badge text-bg-warning text-dark ms-1">Diskon</span>
+                            @endif
+                          </td>
+                          <td class="text-end font-monospace small">
+                            @if ($item->is_discount)
+                              − {{ $fmtRp($item->harga) }}
+                            @else
+                              {{ $fmtRp($item->harga) }}
+                            @endif
+                          </td>
                           <td>
                             <input type="number" class="form-control form-control-sm manual-additional-qty" min="0" max="999" value="0" data-item-id="{{ $item->id }}" />
                           </td>
@@ -145,7 +156,8 @@
                 <div class="g-3 mb-3">
                   <div class="border rounded p-3">
                     <div class="d-flex justify-content-between small"><span>Sewa meja</span><span class="font-monospace" id="sumSewa">Rp 0</span></div>
-                    <div class="d-flex justify-content-between small"><span>F&amp;B</span><span class="font-monospace" id="sumAdditional">Rp 0</span></div>
+                    <div class="d-flex justify-content-between small" id="sumAdditionalRow"><span>Item tambahan</span><span class="font-monospace" id="sumAdditionalPositive">Rp 0</span></div>
+                    <div class="d-flex justify-content-between small text-danger d-none" id="sumDiscountRow"><span>Diskon</span><span class="font-monospace" id="sumDiscount">− Rp 0</span></div>
                     <hr class="my-2" />
                     <div class="d-flex justify-content-between fw-bold"><span>Total</span><span class="font-monospace text-primary" id="sumGrand">Rp 0</span></div>
                   </div>
@@ -208,7 +220,18 @@
   const buktiEl = document.getElementById('bukti');
 
   function fmtRp(n) {
-    return 'Rp ' + Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    const val = Number(n || 0);
+    if (val < 0) {
+      return '− Rp ' + Math.abs(val).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    }
+    return 'Rp ' + val.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  }
+
+  function additionalLineSubtotal(row, qty) {
+    const harga = parseFloat(row?.getAttribute('data-item-harga') || '0');
+    const isDiscount = row?.getAttribute('data-item-discount') === '1';
+    const subtotal = harga * qty;
+    return isDiscount ? -subtotal : subtotal;
   }
 
   function selectedMejaRates() {
@@ -306,17 +329,22 @@
   }
 
   function additionalTotal() {
-    let sum = 0;
+    let positive = 0;
+    let discount = 0;
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
       const row = inp.closest('tr');
       if (row && row.classList.contains('d-none')) return;
-      const harga = parseFloat(row?.getAttribute('data-item-harga') || '0');
       const qty = parseInt(inp.value, 10) || 0;
-      sum += harga * qty;
+      const subtotal = additionalLineSubtotal(row, qty);
       const cell = row?.querySelector('.manual-line-total');
-      if (cell) cell.textContent = fmtRp(harga * qty);
+      if (cell) cell.textContent = fmtRp(subtotal);
+      if (subtotal < 0) {
+        discount += Math.abs(subtotal);
+      } else {
+        positive += subtotal;
+      }
     });
-    return sum;
+    return { positive: positive, discount: discount, net: positive - discount };
   }
 
   function recalcTotals() {
@@ -324,13 +352,23 @@
     const hours = parseInt(jamEl?.value, 10) || 0;
     const sewa = computeSewaPrice(hours, rate, selectedPromo());
     const add = additionalTotal();
-    const grand = sewa + add;
+    const grand = Math.max(0, sewa + add.net);
 
     document.getElementById('manualRateHint').textContent =
       'Tarif normal: ' + fmtRp(rate) + ' / jam (' + (isMember() ? 'Member' : 'Non-Member') + ')';
     document.getElementById('previewSewa').textContent = fmtRp(sewa);
     document.getElementById('sumSewa').textContent = fmtRp(sewa);
-    document.getElementById('sumAdditional').textContent = fmtRp(add);
+    document.getElementById('sumAdditionalPositive').textContent = fmtRp(add.positive);
+    const discountRow = document.getElementById('sumDiscountRow');
+    const discountEl = document.getElementById('sumDiscount');
+    if (discountRow && discountEl) {
+      discountRow.classList.toggle('d-none', add.discount <= 0);
+      discountEl.textContent = '− Rp ' + add.discount.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    }
+    const additionalRow = document.getElementById('sumAdditionalRow');
+    if (additionalRow) {
+      additionalRow.classList.toggle('d-none', add.positive <= 0 && add.discount > 0);
+    }
     document.getElementById('sumGrand').textContent = fmtRp(grand);
 
     if (jumlahBayarEl && (jumlahBayarEl.dataset.auto !== '0' || jumlahBayarEl.value === '')) {

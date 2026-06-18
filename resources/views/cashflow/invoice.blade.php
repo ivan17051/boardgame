@@ -250,9 +250,21 @@
         </tr>
         @foreach ($rental->additionalItems as $line)
           <tr>
-            <td>Additional — {{ $line->nama }}</td>
+            <td>
+              @if ((float) $line->subtotal < 0)
+                Diskon — {{ $line->nama }}
+              @else
+                Additional — {{ $line->nama }}
+              @endif
+            </td>
             <td class="text-end">{{ $line->qty }}</td>
-            <td class="text-end font-monospace">{{ $fmtRp($line->harga) }}</td>
+            <td class="text-end font-monospace">
+              @if ((float) $line->subtotal < 0)
+                − {{ $fmtRp($line->harga) }}
+              @else
+                {{ $fmtRp($line->harga) }}
+              @endif
+            </td>
             <td class="text-end font-monospace">{{ $fmtRp($line->subtotal) }}</td>
           </tr>
         @endforeach
@@ -262,9 +274,9 @@
           <th colspan="3" class="text-end">Subtotal sewa meja</th>
           <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
         </tr>
-        @if ($total_harga_additional > 0)
+        @if ($total_harga_additional != 0)
           <tr>
-            <th colspan="3" class="text-end">Subtotal item tambahan (F&amp;B)</th>
+            <th colspan="3" class="text-end">Subtotal item tambahan &amp; diskon</th>
             <td class="text-end font-monospace">{{ $fmtRp($total_harga_additional) }}</td>
           </tr>
         @endif

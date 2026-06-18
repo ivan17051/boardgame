@@ -37,7 +37,8 @@
                   <th>Toko</th>
                 @endif
                 <th>Nama</th>
-                <th class="text-end">Harga</th>
+                <th>Tipe</th>
+                <th class="text-end">Nilai</th>
                 <th>Status</th>
                 <th class="text-end" style="width:120px">Aksi</th>
               </tr>
@@ -49,7 +50,20 @@
                     <td class="small">{{ $item->toko->nama ?? ('Toko #'.$item->id_toko) }}</td>
                   @endif
                   <td>{{ $item->nama }}</td>
-                  <td class="text-end font-monospace">Rp {{ number_format((float) $item->harga, 0, ',', '.') }}</td>
+                  <td>
+                    @if ($item->is_discount)
+                      <span class="badge text-bg-warning text-dark">Diskon</span>
+                    @else
+                      <span class="badge text-bg-info text-dark">F&amp;B</span>
+                    @endif
+                  </td>
+                  <td class="text-end font-monospace">
+                    @if ($item->is_discount)
+                      − Rp {{ number_format((float) $item->harga, 0, ',', '.') }}
+                    @else
+                      Rp {{ number_format((float) $item->harga, 0, ',', '.') }}
+                    @endif
+                  </td>
                   <td>
                     @if ($item->is_active)
                       <span class="badge text-bg-success">Aktif</span>
@@ -59,7 +73,7 @@
                   </td>
                   <td class="text-end">
                     <button type="button" class="btn btn-sm btn-outline-secondary btn-edit-item" data-bs-toggle="modal" data-bs-target="#itemModal"
-                      data-id="{{ $item->id }}" data-nama="{{ $item->nama }}" data-harga="{{ $item->harga }}" data-active="{{ $item->is_active ? '1' : '0' }}" data-id-toko="{{ $item->id_toko }}">
+                      data-id="{{ $item->id }}" data-nama="{{ $item->nama }}" data-harga="{{ $item->harga }}" data-is-discount="{{ $item->is_discount ? '1' : '0' }}" data-active="{{ $item->is_active ? '1' : '0' }}" data-id-toko="{{ $item->id_toko }}">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-danger btn-delete-item" data-id="{{ $item->id }}" data-nama="{{ $item->nama }}">
@@ -68,7 +82,7 @@
                   </td>
                 </tr>
               @empty
-                <tr><td colspan="{{ $canAssignAnyToko ? 5 : 4 }}" class="text-center text-secondary py-4">Belum ada item.</td></tr>
+                <tr><td colspan="{{ $canAssignAnyToko ? 6 : 5 }}" class="text-center text-secondary py-4">Belum ada item.</td></tr>
               @endforelse
             </tbody>
           </table>
@@ -107,8 +121,13 @@
             <input type="text" class="form-control" id="item_nama" required maxlength="255" />
           </div>
           <div class="mb-3">
-            <label class="form-label" for="item_harga">Harga</label>
+            <label class="form-label" for="item_harga" id="item_harga_label">Harga</label>
             <input type="number" class="form-control" id="item_harga" min="0" step="1" required />
+            <div class="form-text" id="item_harga_help">Untuk item diskon, isi nilai potongan (positif).</div>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="item_is_discount" />
+            <label class="form-check-label" for="item_is_discount">Item diskon (mengurangi total tagihan)</label>
           </div>
           <div class="form-check">
             <input class="form-check-input" type="checkbox" id="item_active" checked />
@@ -139,11 +158,22 @@
   const canAssignAnyToko = @json($canAssignAnyToko);
   const idTokoSelect = document.getElementById('item_id_toko');
   const idTokoHidden = document.getElementById('item_id_toko');
+  const isDiscountInput = document.getElementById('item_is_discount');
+  const hargaLabel = document.getElementById('item_harga_label');
+
+  function syncDiscountUi() {
+    const isDiscount = isDiscountInput?.checked;
+    if (hargaLabel) hargaLabel.textContent = isDiscount ? 'Nilai diskon' : 'Harga';
+  }
+
+  isDiscountInput?.addEventListener('change', syncDiscountUi);
 
   function resetForm() {
     document.getElementById('item_id').value = '';
     document.getElementById('item_nama').value = '';
     document.getElementById('item_harga').value = '';
+    if (isDiscountInput) isDiscountInput.checked = false;
+    syncDiscountUi();
     document.getElementById('item_active').checked = true;
     if (idTokoSelect) idTokoSelect.value = '';
     document.getElementById('itemModalTitle').textContent = 'Tambah item';
@@ -156,6 +186,8 @@
       document.getElementById('item_id').value = btn.dataset.id;
       document.getElementById('item_nama').value = btn.dataset.nama;
       document.getElementById('item_harga').value = btn.dataset.harga;
+      if (isDiscountInput) isDiscountInput.checked = btn.dataset.isDiscount === '1';
+      syncDiscountUi();
       document.getElementById('item_active').checked = btn.dataset.active === '1';
       if (idTokoSelect) idTokoSelect.value = btn.dataset.idToko || '';
       document.getElementById('itemModalTitle').textContent = 'Ubah item';
@@ -169,6 +201,7 @@
     const payload = {
       nama: document.getElementById('item_nama').value.trim(),
       harga: parseFloat(document.getElementById('item_harga').value) || 0,
+      is_discount: isDiscountInput ? isDiscountInput.checked : false,
       is_active: document.getElementById('item_active').checked,
     };
     if (canAssignAnyToko) {

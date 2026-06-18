@@ -275,7 +275,7 @@ class RentalCheckout
      *   total_seconds: int,
      *   durasi_hms: string,
      *   breakdown_html: string,
-     *   additional_lines: array<int, array{id: int, nama: string, harga: float, qty: int, subtotal: float}>,
+     *   additional_lines: array<int, array{id: int, nama: string, harga: float, qty: int, subtotal: float, is_discount: bool}>,
      *   promo_part: float,
      *   normal_part: float,
      *   promo_hours: float,
@@ -320,12 +320,24 @@ class RentalCheckout
             array_sum(array_column($additionalLines, 'subtotal')),
             3
         );
-        $totalHarga = round($totalHargaSewa + $totalHargaAdditional, 3);
+        $totalHarga = max(0, round($totalHargaSewa + $totalHargaAdditional, 3));
+
+        $additionalPositive = 0.0;
+        $additionalDiscount = 0.0;
+        foreach ($additionalLines as $line) {
+            if ($line['subtotal'] < 0) {
+                $additionalDiscount += abs($line['subtotal']);
+            } else {
+                $additionalPositive += $line['subtotal'];
+            }
+        }
 
         $menitStr = number_format($totalMinutes, 2, ',', '.');
         $hargaStr = number_format($normalRate, 0, ',', '.');
         $sewaStr = number_format($totalHargaSewa, 0, ',', '.');
-        $addStr = number_format($totalHargaAdditional, 0, ',', '.');
+        $addPositiveStr = number_format($additionalPositive, 0, ',', '.');
+        $addDiscountStr = number_format($additionalDiscount, 0, ',', '.');
+        $addNetStr = number_format($totalHargaAdditional, 0, ',', '.');
         $totalStr = number_format($totalHarga, 0, ',', '.');
         $durasiHms = self::formatHms($totalSeconds);
         $durasiLabel = $endAt !== null ? 'dari mulai hingga selesai' : 'dari mulai hingga sekarang';
@@ -372,8 +384,16 @@ class RentalCheckout
 
         $breakdownHtml .= '<li><strong>Subtotal sewa meja</strong>: Rp '.$sewaStr.'</li>';
 
-        if ($totalHargaAdditional > 0) {
-            $breakdownHtml .= '<li><strong>Item tambahan</strong>: Rp '.$addStr.'</li>';
+        if ($additionalPositive > 0) {
+            $breakdownHtml .= '<li><strong>Item tambahan</strong>: Rp '.$addPositiveStr.'</li>';
+        }
+        if ($additionalDiscount > 0) {
+            $breakdownHtml .= '<li><strong>Diskon</strong>: − Rp '.$addDiscountStr.'</li>';
+        }
+        if ($additionalPositive > 0 && $additionalDiscount > 0) {
+            $breakdownHtml .= '<li><strong>Subtotal item & diskon</strong>: Rp '.$addNetStr.'</li>';
+        } elseif ($totalHargaAdditional !== 0.0 && $additionalPositive <= 0 && $additionalDiscount <= 0) {
+            $breakdownHtml .= '<li><strong>Item tambahan & diskon</strong>: Rp '.$addNetStr.'</li>';
         }
 
         $breakdownHtml .= '<li><strong>Total</strong>: Rp '.$totalStr.'</li>'
@@ -399,7 +419,7 @@ class RentalCheckout
 
     /**
      * @param  array<int, array{id: int, qty: int}>|null  $input
-     * @return array<int, array{id: int, nama: string, harga: float, qty: int, subtotal: float}>
+     * @return array<int, array{id: int, nama: string, harga: float, qty: int, subtotal: float, is_discount: bool}>
      */
     public static function resolveAdditionalLines(?array $input): array
     {
@@ -422,13 +442,19 @@ class RentalCheckout
             if (! $master) {
                 continue;
             }
-            $harga = (float) $master->harga;
+            $harga = abs((float) $master->harga);
+            $isDiscount = (bool) $master->is_discount;
+            $subtotal = round($harga * $qty, 3);
+            if ($isDiscount) {
+                $subtotal = -$subtotal;
+            }
             $lines[] = [
                 'id' => $master->id,
                 'nama' => $master->nama,
                 'harga' => $harga,
                 'qty' => $qty,
-                'subtotal' => round($harga * $qty, 3),
+                'subtotal' => $subtotal,
+                'is_discount' => $isDiscount,
             ];
         }
 

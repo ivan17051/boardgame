@@ -31,6 +31,7 @@ class AdditionalItemController extends Controller
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'harga' => ['required', 'numeric', 'min:0'],
+            'is_discount' => ['sometimes', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'id_toko' => $canAssignAnyToko
                 ? ['required', 'integer', 'min:1', Rule::exists('m_toko', 'id')]
@@ -56,6 +57,7 @@ class AdditionalItemController extends Controller
             'id_toko' => $idToko,
             'nama' => $validated['nama'],
             'harga' => $validated['harga'],
+            'is_discount' => $request->boolean('is_discount', false),
             'is_active' => $request->boolean('is_active', true),
             'idc' => $uid,
             'idm' => $uid,
@@ -75,6 +77,7 @@ class AdditionalItemController extends Controller
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'harga' => ['required', 'numeric', 'min:0'],
+            'is_discount' => ['sometimes', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
             'id_toko' => $canAssignAnyToko
                 ? ['required', 'integer', 'min:1', Rule::exists('m_toko', 'id')]
@@ -84,6 +87,7 @@ class AdditionalItemController extends Controller
         $update = [
             'nama' => $validated['nama'],
             'harga' => $validated['harga'],
+            'is_discount' => $request->boolean('is_discount', false),
             'is_active' => $request->boolean('is_active', true),
             'dom' => now(),
             'idm' => auth()->id(),

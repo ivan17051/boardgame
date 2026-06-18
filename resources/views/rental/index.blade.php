@@ -153,23 +153,34 @@
       <div class="modal-body">
         <div id="checkoutSummary" class="border rounded p-3 bg-body-secondary small mb-3">Memuat…</div>
 
-        <h6 class="fw-semibold">Item tambahan (F&amp;B)</h6>
+        <h6 class="fw-semibold">Item tambahan &amp; diskon</h6>
         <div id="additionalItemsEmpty" class="text-secondary small mb-2 d-none">Belum ada item di master. Tambah di menu <strong>Item tambahan</strong>.</div>
         <div class="table-responsive mb-2">
           <table class="table table-sm align-middle mb-0" id="additionalItemsTable">
             <thead class="table-light">
               <tr>
                 <th>Item</th>
-                <th class="text-end" style="width:100px">Harga</th>
+                <th class="text-end" style="width:100px">Nilai</th>
                 <th style="width:90px">Qty</th>
                 <th class="text-end" style="width:110px">Subtotal</th>
               </tr>
             </thead>
             <tbody>
               @forelse ($additionalItems as $item)
-                <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
-                  <td>{{ $item->nama }}</td>
-                  <td class="text-end font-monospace small">{{ $fmtRp($item->harga) }}</td>
+                <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-discount="{{ $item->is_discount ? '1' : '0' }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
+                  <td>
+                    {{ $item->nama }}
+                    @if ($item->is_discount)
+                      <span class="badge text-bg-warning text-dark ms-1">Diskon</span>
+                    @endif
+                  </td>
+                  <td class="text-end font-monospace small">
+                    @if ($item->is_discount)
+                      − {{ $fmtRp($item->harga) }}
+                    @else
+                      {{ $fmtRp($item->harga) }}
+                    @endif
+                  </td>
                   <td>
                     <input type="number" class="form-control form-control-sm additional-qty" min="0" max="999" value="0" data-item-id="{{ $item->id }}" />
                   </td>
@@ -183,7 +194,7 @@
 
         <div class="border rounded p-3 bg-light mb-3">
           <div class="d-flex justify-content-between"><span>Biaya sewa meja</span><span class="font-monospace" id="checkoutSewaTotal">Rp 0</span></div>
-          <div class="d-flex justify-content-between"><span>Item tambahan</span><span class="font-monospace" id="checkoutAdditionalTotal">Rp 0</span></div>
+          <div class="d-flex justify-content-between"><span>Item tambahan &amp; diskon</span><span class="font-monospace" id="checkoutAdditionalTotal">Rp 0</span></div>
           <hr class="my-2" />
           <div class="d-flex justify-content-between fw-bold fs-5"><span>Total tagihan</span><span class="font-monospace text-primary" id="checkoutGrandTotal">Rp 0</span></div>
         </div>
@@ -254,6 +265,7 @@
       'id_toko' => (int) ($i->id_toko ?? 0),
       'nama' => $i->nama,
       'harga' => (float) $i->harga,
+      'is_discount' => (bool) $i->is_discount,
     ];
   })->values();
   $canSeeAllToko = \App\Support\TokoScope::canSeeAll();
@@ -297,7 +309,17 @@
     return pad2(h) + ':' + pad2(m) + ':' + pad2(sec);
   }
   function fmtRp(n) {
-    return 'Rp ' + Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    const val = Number(n || 0);
+    if (val < 0) {
+      return '− Rp ' + Math.abs(val).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    }
+    return 'Rp ' + val.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  }
+  function additionalLineSubtotal(row, qty) {
+    const harga = parseFloat(row?.getAttribute('data-item-harga') || '0');
+    const isDiscount = row?.getAttribute('data-item-discount') === '1';
+    const subtotal = harga * qty;
+    return isDiscount ? -subtotal : subtotal;
   }
   function escapeHtml(s) {
     const d = document.createElement('div');
@@ -530,10 +552,9 @@
   document.querySelectorAll('.additional-qty').forEach(function (inp) {
     inp.addEventListener('input', function () {
       const row = inp.closest('tr');
-      const harga = parseFloat(row?.getAttribute('data-item-harga') || '0');
       const qty = parseInt(inp.value, 10) || 0;
       const cell = row?.querySelector('.additional-line-total');
-      if (cell) cell.textContent = fmtRp(harga * qty);
+      if (cell) cell.textContent = fmtRp(additionalLineSubtotal(row, qty));
       clearTimeout(previewTimer);
       previewTimer = setTimeout(refreshCheckoutPreview, 400);
     });

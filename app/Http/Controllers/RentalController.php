@@ -41,8 +41,8 @@ class RentalController extends Controller
                 ->orderBy('nama');
 
             $additionalItems = TokoScope::canSeeAll()
-                ? $query->get(['id', 'id_toko', 'nama', 'harga'])
-                : $query->get(['id', 'nama', 'harga']);
+                ? $query->get(['id', 'id_toko', 'nama', 'harga', 'is_discount'])
+                : $query->get(['id', 'nama', 'harga', 'is_discount']);
         }
 
         $rentalPromos = collect();
@@ -436,7 +436,7 @@ class RentalController extends Controller
             'dom' => $now,
         ]);
 
-        if ($calc['total_harga_additional'] > 0) {
+        if ($calc['total_harga_additional'] != 0) {
             CashFlow::query()->create([
                 'id_rental' => $rental->id,
                 'tipe_transaksi' => 'income',

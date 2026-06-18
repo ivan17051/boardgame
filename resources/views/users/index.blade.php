@@ -28,6 +28,11 @@
             <h3 class="card-title mb-0">Semua Pengguna</h3>
           </div>
           <div class="col-md-6 text-end">
+            @if ($showHidden)
+              <!-- <a href="{{ route('users.index') }}" class="btn btn-outline-secondary btn-sm me-1">Sembunyikan tersembunyi</a> -->
+            @else
+              <!-- <a href="{{ route('users.index', ['show_hidden' => 1]) }}" class="btn btn-outline-secondary btn-sm me-1">Tampilkan tersembunyi</a> -->
+            @endif
             <button type="button" class="btn btn-primary btn-sm" id="btn-add-user" data-bs-toggle="modal" data-bs-target="#userModal">
               <i class="bi bi-person-plus-fill me-1"></i> Tambah pengguna
             </button>
@@ -50,8 +55,13 @@
             </thead>
             <tbody>
               @forelse ($users as $user)
-                <tr data-user-id="{{ $user->id }}">
-                  <td class="col-name">{{ $user->nama }}</td>
+                <tr data-user-id="{{ $user->id }}" @if($user->is_hidden) class="table-secondary" @endif>
+                  <td class="col-name">
+                    {{ $user->nama }}
+                    @if ($user->is_hidden)
+                      <!-- <span class="badge text-bg-secondary ms-1">Tersembunyi</span> -->
+                    @endif
+                  </td>
                   <td class="col-username">{{ $user->username }}</td>
                   <td class="col-role">
                     <span class="badge {{ $user->role === 'admin' ? 'bg-primary' : 'bg-secondary' }}">
@@ -85,6 +95,7 @@
                       data-role="{{ $user->role }}"
                       data-id-toko="{{ $user->id_toko }}"
                       data-is-active="{{ $user->is_active ? '1' : '0' }}"
+                      data-is-hidden="{{ $user->is_hidden ? '1' : '0' }}"
                       title="Ubah"
                     >
                       <i class="bi bi-pencil"></i>
@@ -170,6 +181,13 @@
             </div>
             <div class="form-text">Centang untuk mengaktifkan pengguna. Jika tidak dicentang, pengguna tidak dapat masuk ke sistem.</div>
           </div>
+          <!-- <div class="col-md-12 mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="user_is_hidden" name="is_hidden" value="1" />
+              <label class="form-check-label" for="user_is_hidden">Sembunyikan dari aplikasi</label>
+            </div>
+            <div class="form-text">Pengguna tersembunyi tidak muncul di daftar dan tidak dapat login.</div>
+          </div> -->
           </div>
           
           
@@ -238,6 +256,7 @@
   const idTokoSelect = document.getElementById('user_id_toko');
   const idTokoHidden = document.getElementById('user_id_toko_hidden');
   const isActiveInput = document.getElementById('user_is_active');
+  const isHiddenInput = document.getElementById('user_is_hidden');
   const deleteNameEl = document.getElementById('deleteUserName');
   const confirmDeleteBtn = document.getElementById('confirmDeleteUser');
 
@@ -267,6 +286,7 @@
     form.reset();
     userIdInput.value = '';
     if (isActiveInput) isActiveInput.checked = true;
+    if (isHiddenInput) isHiddenInput.checked = false;
     passwordInput.removeAttribute('required');
     passwordConfirmInput.removeAttribute('required');
     clearAlert();
@@ -290,6 +310,7 @@
       document.getElementById('user_role').value = btn.dataset.role || '';
       if (idTokoSelect) idTokoSelect.value = btn.dataset.idToko ?? '';
       if (isActiveInput) isActiveInput.checked = btn.dataset.isActive === '1';
+      if (isHiddenInput) isHiddenInput.checked = btn.dataset.isHidden === '1';
       passwordInput.removeAttribute('required');
       passwordConfirmInput.removeAttribute('required');
       passwordHelp.textContent = 'Kosongkan untuk mempertahankan kata sandi saat ini.';
@@ -352,6 +373,7 @@
       role: document.getElementById('user_role').value.trim(),
       id_toko: parseInt(idTokoVal, 10) || 0,
       is_active: isActiveInput ? isActiveInput.checked : true,
+      is_hidden: isHiddenInput ? isHiddenInput.checked : false,
     };
 
     const pwd = passwordInput.value;

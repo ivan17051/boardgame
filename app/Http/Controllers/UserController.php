@@ -8,19 +8,27 @@ use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $users = TokoScope::scopeUsers(User::query())
+        $showHidden = $request->boolean('show_hidden');
+
+        $usersQuery = TokoScope::scopeUsers(User::query())
             ->with('toko')
-            ->orderBy('username')
-            ->get();
+            ->orderBy('username');
+
+        if (! $showHidden) {
+            $usersQuery->visible();
+        }
+
+        $users = $usersQuery->get();
 
         $tokos = Toko::query()->orderBy('nama')->get(['id', 'nama']);
         $canAssignAnyToko = TokoScope::canSeeAll();
 
-        return view('users.index', compact('users', 'tokos', 'canAssignAnyToko'));
+        return view('users.index', compact('users', 'tokos', 'canAssignAnyToko', 'showHidden'));
     }
 
     public function store(Request $request): JsonResponse
@@ -31,6 +39,7 @@ class UserController extends Controller
             'role' => ['required', 'string', 'max:255'],
             'id_toko' => ['required', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_hidden' => ['sometimes', 'boolean'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
 
@@ -39,6 +48,7 @@ class UserController extends Controller
 
         $validated['id_toko'] = $idToko;
         $validated['is_active'] = $request->boolean('is_active', true);
+        $validated['is_hidden'] = $request->boolean('is_hidden', false);
         $validated['password'] = Hash::make($validated['password']);
         unset($validated['password_confirmation']);
 
@@ -61,6 +71,7 @@ class UserController extends Controller
             'role' => ['required', 'string', 'max:255'],
             'id_toko' => ['required', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_hidden' => ['sometimes', 'boolean'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ]);
 
@@ -69,9 +80,14 @@ class UserController extends Controller
 
         $validated['id_toko'] = $idToko;
         $validated['is_active'] = $request->boolean('is_active');
+        $validated['is_hidden'] = $request->boolean('is_hidden');
 
         if ((int) $user->id === (int) auth()->id() && ! $validated['is_active']) {
             return response()->json(['message' => 'Tidak dapat menonaktifkan akun sendiri.'], 422);
+        }
+
+        if ((int) $user->id === (int) auth()->id() && $validated['is_hidden']) {
+            return response()->json(['message' => 'Tidak dapat menyembunyikan akun sendiri.'], 422);
         }
 
         if (! empty($validated['password'])) {

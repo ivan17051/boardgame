@@ -30,6 +30,7 @@ class User extends Authenticatable
         'id_toko',
         'remember_token',
         'is_active',
+        'is_hidden',
         'doc',
         'dom'
     ];
@@ -51,10 +52,21 @@ class User extends Authenticatable
      */
     protected $casts = [
         'is_active' => 'boolean',
+        'is_hidden' => 'boolean',
         'id_toko' => 'integer',
         'doc' => 'datetime',
         'dom' => 'datetime',
     ];
+
+    public function scopeVisible($query)
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    public function isHidden(): bool
+    {
+        return (bool) $this->is_hidden;
+    }
 
     public function toko(): BelongsTo
     {
