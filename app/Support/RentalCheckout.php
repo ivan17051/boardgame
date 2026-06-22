@@ -51,7 +51,26 @@ class RentalCheckout
     }
 
     /**
-     * Split pricing: promo rate for up to promo_duration_limit billed hours, then normal rate.
+     * Null atau 0 = promo tanpa batas durasi (hanya dibatasi jam_selesai).
+     */
+    public static function normalizePromoDurationLimit($limit): ?float
+    {
+        if ($limit === null || $limit === '') {
+            return null;
+        }
+
+        $hours = (float) $limit;
+
+        return $hours > 0 ? $hours : null;
+    }
+
+    public static function hasPromoDurationLimit(?float $promoDurationLimitHours): bool
+    {
+        return self::normalizePromoDurationLimit($promoDurationLimitHours) !== null;
+    }
+
+    /**
+     * Split pricing: promo rate for up to promo_duration_limit billed hours (if set), then normal rate.
      *
      * @return array{
      *   total_harga_sewa: float,
@@ -68,9 +87,7 @@ class RentalCheckout
         ?float $promoDurationLimitHours
     ): array {
         $billedHours = max(0, $billedHours);
-        $hasPromo = $promoHourlyRate !== null
-            && $promoDurationLimitHours !== null
-            && (float) $promoDurationLimitHours > 0;
+        $hasPromo = $promoHourlyRate !== null;
 
         if (! $hasPromo) {
             $total = round($billedHours * $normalHourlyRate, 3);
@@ -84,10 +101,10 @@ class RentalCheckout
             ];
         }
 
-        $limit = (float) $promoDurationLimitHours;
+        $limit = self::normalizePromoDurationLimit($promoDurationLimitHours);
         $promoRate = (float) $promoHourlyRate;
 
-        if ($billedHours <= $limit) {
+        if ($limit === null || $billedHours <= $limit) {
             $promoPart = round($billedHours * $promoRate, 3);
 
             return [
@@ -166,6 +183,55 @@ class RentalCheckout
         return $promoSeconds / 60;
     }
 
+    public static function promoDurationLimitEndAt(CarbonInterface $start, float $promoDurationLimitHours): CarbonInterface
+    {
+        return $start->copy()->addMinutes((int) round($promoDurationLimitHours * 60));
+    }
+
+    /**
+     * Akhir jendela jam promo pada hari/siklus yang relevan dengan waktu mulai sewa.
+     */
+    public static function promoJamSelesaiAt(CarbonInterface $start, ?string $jamMulai, ?string $jamSelesai): CarbonInterface
+    {
+        $mulai = RentalPromo::normalizeTimeString($jamMulai);
+        $selesai = RentalPromo::normalizeTimeString($jamSelesai);
+        $day = $start->copy()->startOfDay();
+        $windowStart = $day->copy()->setTimeFromTimeString($mulai);
+        $windowEnd = $day->copy()->setTimeFromTimeString($selesai);
+
+        if ($mulai > $selesai) {
+            $windowEnd->addDay();
+            $previousWindowEnd = $day->copy()->setTimeFromTimeString($selesai);
+            if ($start->lte($previousWindowEnd)) {
+                return $previousWindowEnd;
+            }
+        }
+
+        return $windowEnd;
+    }
+
+    /**
+     * Promo hangus di checkout: batas durasi melewati jam_selesai dan waktu selesai melewati batas durasi.
+     */
+    public static function forfeitsPromoAtCheckout(
+        CarbonInterface $start,
+        CarbonInterface $end,
+        float $promoDurationLimitHours,
+        ?string $jamMulai,
+        ?string $jamSelesai
+    ): bool {
+        if ($promoDurationLimitHours <= 0 || ! $jamMulai || ! $jamSelesai) {
+            return false;
+        }
+
+        $durationLimitEnd = self::promoDurationLimitEndAt($start, $promoDurationLimitHours);
+        $jamSelesaiAt = self::promoJamSelesaiAt($start, $jamMulai, $jamSelesai);
+
+        return $durationLimitEnd->gt($jamSelesaiAt)
+            && $end->gt($jamSelesaiAt)
+            && $end->gt($durationLimitEnd);
+    }
+
     /**
      * @return array{
      *   total_harga_sewa: float,
@@ -181,12 +247,14 @@ class RentalCheckout
         float $promoEligibleMinutes,
         float $normalHourlyRate,
         ?float $promoHourlyRate,
-        ?float $promoDurationLimitHours
+        ?float $promoDurationLimitHours,
+        ?CarbonInterface $sessionStart = null,
+        ?CarbonInterface $sessionEnd = null,
+        ?string $jamMulai = null,
+        ?string $jamSelesai = null
     ): array {
         $totalBilled = self::billedHours($totalMinutes);
-        $hasPromo = $promoHourlyRate !== null
-            && $promoDurationLimitHours !== null
-            && (float) $promoDurationLimitHours > 0;
+        $hasPromo = $promoHourlyRate !== null;
 
         if (! $hasPromo) {
             $calc = self::computeTableRentalPrice($totalBilled, $normalHourlyRate, null, null);
@@ -194,12 +262,27 @@ class RentalCheckout
             return array_merge($calc, ['promo_eligible_minutes' => 0.0]);
         }
 
+        $limit = self::normalizePromoDurationLimit($promoDurationLimitHours);
+
+        if ($limit !== null && $sessionStart && $sessionEnd && self::forfeitsPromoAtCheckout(
+            $sessionStart,
+            $sessionEnd,
+            $limit,
+            $jamMulai,
+            $jamSelesai
+        )) {
+            $calc = self::computeTableRentalPrice($totalBilled, $normalHourlyRate, null, null);
+
+            return array_merge($calc, ['promo_eligible_minutes' => round($promoEligibleMinutes, 2)]);
+        }
+
         $promoEligibleBilled = $promoEligibleMinutes > 0
             ? self::billedHours($promoEligibleMinutes)
             : 0;
-        $limit = (float) $promoDurationLimitHours;
         $promoRate = (float) $promoHourlyRate;
-        $promoHoursApplied = min((float) $promoEligibleBilled, $limit, (float) $totalBilled);
+        $promoHoursApplied = $limit === null
+            ? min((float) $promoEligibleBilled, (float) $totalBilled)
+            : min((float) $promoEligibleBilled, $limit, (float) $totalBilled);
         $normalHours = max(0, $totalBilled - $promoHoursApplied);
         $promoPart = round($promoHoursApplied * $promoRate, 3);
         $normalPart = round($normalHours * $normalHourlyRate, 3);
@@ -219,7 +302,7 @@ class RentalCheckout
      *   id_promo: int,
      *   promo_nama: string,
      *   promo_hourly_rate: float,
-     *   promo_duration_limit: float,
+     *   promo_duration_limit: float|null,
      *   promo_jam_mulai: string,
      *   promo_jam_selesai: string,
      *   promo_tgl_awal: string,
@@ -256,7 +339,7 @@ class RentalCheckout
             'id_promo' => (int) $promo->id,
             'promo_nama' => $promo->nama,
             'promo_hourly_rate' => (float) $promo->promo_hourly_rate,
-            'promo_duration_limit' => (float) $promo->promo_duration_limit,
+            'promo_duration_limit' => self::normalizePromoDurationLimit($promo->promo_duration_limit),
             'promo_jam_mulai' => RentalPromo::normalizeTimeString($promo->jam_mulai),
             'promo_jam_selesai' => RentalPromo::normalizeTimeString($promo->jam_selesai),
             'promo_tgl_awal' => RentalPromo::normalizeDateString($promo->tgl_awal) ?? '',
@@ -291,7 +374,9 @@ class RentalCheckout
         $billedHours = self::billedHours($totalMinutes);
         $normalRate = (float) $rental->harga;
         $promoRate = $rental->hasPromo() ? (float) $rental->promo_hourly_rate : null;
-        $promoLimit = $rental->hasPromo() ? (float) $rental->promo_duration_limit : null;
+        $promoLimit = $rental->hasPromo()
+            ? self::normalizePromoDurationLimit($rental->promo_duration_limit)
+            : null;
 
         if ($rental->hasPromo() && $rental->promo_jam_mulai && $rental->promo_jam_selesai) {
             $promoEligibleMinutes = self::promoEligibleMinutes(
@@ -307,7 +392,11 @@ class RentalCheckout
                 $promoEligibleMinutes,
                 $normalRate,
                 $promoRate,
-                $promoLimit
+                $promoLimit,
+                $start,
+                $end,
+                $rental->promo_jam_mulai,
+                $rental->promo_jam_selesai
             );
         } else {
             $sewaCalc = self::computeTableRentalPrice($billedHours, $normalRate, $promoRate, $promoLimit);
@@ -350,7 +439,9 @@ class RentalCheckout
 
         if ($rental->hasPromo()) {
             $promoRateStr = number_format((float) $rental->promo_hourly_rate, 0, ',', '.');
-            $limitStr = number_format((float) $rental->promo_duration_limit, 2, ',', '.');
+            $limitLabel = $rental->hasPromoDurationLimit()
+                ? 'maks. '.number_format((float) $rental->promo_duration_limit, 2, ',', '.').' jam'
+                : 'tanpa batas durasi';
             $namaPromo = htmlspecialchars($rental->promo_nama ?? 'Promo', ENT_QUOTES, 'UTF-8');
             $jamMulai = substr(RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5);
             $jamSelesai = substr(RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5);
@@ -364,7 +455,7 @@ class RentalCheckout
                 $periodeLabel = 'hingga '.\Carbon\Carbon::parse($rental->promo_tgl_akhir)->format('d/m/Y');
             }
             $breakdownHtml .= '<li><strong>Promo</strong>: '.$namaPromo
-                .' — Rp '.$promoRateStr.' / jam (maks. '.$limitStr.' jam, '.$periodeLabel.', jam '.$jamMulai.'–'.$jamSelesai.')</li>';
+                .' — Rp '.$promoRateStr.' / jam ('.$limitLabel.', '.$periodeLabel.', jam '.$jamMulai.'–'.$jamSelesai.')</li>';
             if (($sewaCalc['promo_eligible_minutes'] ?? 0) > 0) {
                 $breakdownHtml .= '<li><strong>Durasi dalam jam promo</strong>: '
                     .number_format($sewaCalc['promo_eligible_minutes'], 2, ',', '.').' menit</li>';
@@ -374,6 +465,8 @@ class RentalCheckout
                 $breakdownHtml .= '<li><strong>Bagian promo</strong>: '
                     .number_format($sewaCalc['promo_hours'], 2, ',', '.').' jam × Rp '.$promoRateStr
                     .' = Rp '.number_format($sewaCalc['promo_part'], 0, ',', '.').'</li>';
+            } elseif (($sewaCalc['promo_eligible_minutes'] ?? 0) > 0 && $sewaCalc['promo_part'] <= 0) {
+                $breakdownHtml .= '<li class="text-warning"><strong>Promo tidak berlaku</strong>: checkout melewati jam promo dan batas durasi — tarif normal untuk seluruh sewa</li>';
             }
             if ($sewaCalc['normal_hours'] > 0) {
                 $breakdownHtml .= '<li><strong>Bagian tarif normal</strong>: '

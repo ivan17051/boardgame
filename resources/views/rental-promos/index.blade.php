@@ -57,7 +57,13 @@
                   @endif
                   <td>{{ $promo->nama }}</td>
                   <td class="text-end font-monospace">Rp {{ number_format((float) $promo->promo_hourly_rate, 0, ',', '.') }}</td>
-                  <td class="text-end">{{ number_format((float) $promo->promo_duration_limit, 2, ',', '.') }} jam</td>
+                  <td class="text-end">
+                    @if ($promo->promo_duration_limit !== null && (float) $promo->promo_duration_limit > 0)
+                      {{ number_format((float) $promo->promo_duration_limit, 2, ',', '.') }} jam
+                    @else
+                      <span class="text-muted">Tanpa batas</span>
+                    @endif
+                  </td>
                   <td class="small">{{ $promo->periodeFormatted() }}</td>
                   <td class="small font-monospace">{{ $promo->jamMulaiFormatted() }} – {{ $promo->jamSelesaiFormatted() }}</td>
                   <td>
@@ -72,7 +78,7 @@
                       data-id="{{ $promo->id }}"
                       data-nama="{{ $promo->nama }}"
                       data-rate="{{ $promo->promo_hourly_rate }}"
-                      data-limit="{{ $promo->promo_duration_limit }}"
+                      data-limit="{{ ($promo->promo_duration_limit !== null && (float) $promo->promo_duration_limit > 0) ? $promo->promo_duration_limit : '' }}"
                       data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
                       data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
                       data-tgl-awal="{{ $promo->tgl_awal ? $promo->tgl_awal->format('Y-m-d') : '' }}"
@@ -131,8 +137,8 @@
           </div>
           <div class="mb-3">
             <label class="form-label" for="promo_duration_limit">Batas durasi promo (jam)</label>
-            <input type="number" class="form-control" id="promo_duration_limit" min="0.01" max="999" step="0.01" required />
-            <div class="form-text">Maks. jam ditagihkan dengan tarif promo per sesi sewa.</div>
+            <input type="number" class="form-control" id="promo_duration_limit" min="0" max="999" step="0.01" />
+            <div class="form-text">Opsional. Kosong atau 0 = tanpa batas durasi (promo berlaku hingga jam selesai).</div>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6">
@@ -225,7 +231,12 @@
     const payload = {
       nama: document.getElementById('promo_nama').value.trim(),
       promo_hourly_rate: parseFloat(document.getElementById('promo_hourly_rate').value) || 0,
-      promo_duration_limit: parseFloat(document.getElementById('promo_duration_limit').value) || 0,
+      promo_duration_limit: (() => {
+        const raw = document.getElementById('promo_duration_limit').value.trim();
+        if (!raw) return null;
+        const v = parseFloat(raw);
+        return (Number.isNaN(v) || v <= 0) ? null : v;
+      })(),
       tgl_awal: document.getElementById('promo_tgl_awal').value || null,
       tgl_akhir: document.getElementById('promo_tgl_akhir').value || null,
       jam_mulai: document.getElementById('promo_jam_mulai').value,

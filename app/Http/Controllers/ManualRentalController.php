@@ -127,7 +127,11 @@ class ManualRentalController extends Controller
                     $promoMinutes,
                     $rate,
                     $promoRate,
-                    $promoLimit
+                    $promoLimit,
+                    $waktuStart,
+                    $waktuEnd,
+                    $promoSnapshot['promo_jam_mulai'],
+                    $promoSnapshot['promo_jam_selesai']
                 );
             } else {
                 $sewaCalc = RentalCheckout::computeTableRentalPrice($billedHours, $rate, null, null);

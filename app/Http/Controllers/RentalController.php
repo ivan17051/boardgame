@@ -396,7 +396,7 @@ class RentalController extends Controller
             'has_promo' => $rental->hasPromo(),
             'promo_nama' => $rental->promo_nama,
             'promo_hourly_rate' => $rental->hasPromo() ? (float) $rental->promo_hourly_rate : null,
-            'promo_duration_limit' => $rental->hasPromo() ? (float) $rental->promo_duration_limit : null,
+            'promo_duration_limit' => $rental->hasPromoDurationLimit() ? (float) $rental->promo_duration_limit : null,
             'total_harga_sewa' => $calc['total_harga_sewa'],
             'total_harga_sewa_formatted' => number_format($calc['total_harga_sewa'], 0, ',', '.'),
             'total_harga_additional' => $calc['total_harga_additional'],

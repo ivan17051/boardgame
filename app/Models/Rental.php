@@ -117,8 +117,12 @@ class Rental extends Model
 
     public function hasPromo(): bool
     {
-        return $this->promo_hourly_rate !== null
-            && $this->promo_duration_limit !== null
+        return $this->promo_hourly_rate !== null;
+    }
+
+    public function hasPromoDurationLimit(): bool
+    {
+        return $this->promo_duration_limit !== null
             && (float) $this->promo_duration_limit > 0;
     }
 

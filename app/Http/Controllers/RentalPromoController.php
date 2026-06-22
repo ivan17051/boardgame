@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\RentalPromo;
 use App\Models\Toko;
+use App\Support\RentalCheckout;
 use App\Support\TokoScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,7 @@ class RentalPromoController extends Controller
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'promo_hourly_rate' => ['required', 'numeric', 'min:0'],
-            'promo_duration_limit' => ['required', 'numeric', 'min:0.01', 'max:999'],
+            'promo_duration_limit' => ['nullable', 'numeric', 'min:0', 'max:999'],
             'jam_mulai' => ['required', 'date_format:H:i'],
             'jam_selesai' => ['required', 'date_format:H:i'],
             'tgl_awal' => ['nullable', 'date'],
@@ -64,7 +65,7 @@ class RentalPromoController extends Controller
             'id_toko' => $idToko,
             'nama' => $validated['nama'],
             'promo_hourly_rate' => $validated['promo_hourly_rate'],
-            'promo_duration_limit' => $validated['promo_duration_limit'],
+            'promo_duration_limit' => RentalCheckout::normalizePromoDurationLimit($validated['promo_duration_limit'] ?? null),
             'jam_mulai' => RentalPromo::normalizeTimeString($validated['jam_mulai'].':00'),
             'jam_selesai' => RentalPromo::normalizeTimeString($validated['jam_selesai'].':00'),
             'tgl_awal' => $validated['tgl_awal'] ?? null,
@@ -88,7 +89,7 @@ class RentalPromoController extends Controller
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
             'promo_hourly_rate' => ['required', 'numeric', 'min:0'],
-            'promo_duration_limit' => ['required', 'numeric', 'min:0.01', 'max:999'],
+            'promo_duration_limit' => ['nullable', 'numeric', 'min:0', 'max:999'],
             'jam_mulai' => ['required', 'date_format:H:i'],
             'jam_selesai' => ['required', 'date_format:H:i'],
             'tgl_awal' => ['nullable', 'date'],
@@ -104,7 +105,7 @@ class RentalPromoController extends Controller
         $update = [
             'nama' => $validated['nama'],
             'promo_hourly_rate' => $validated['promo_hourly_rate'],
-            'promo_duration_limit' => $validated['promo_duration_limit'],
+            'promo_duration_limit' => RentalCheckout::normalizePromoDurationLimit($validated['promo_duration_limit'] ?? null),
             'jam_mulai' => RentalPromo::normalizeTimeString($validated['jam_mulai'].':00'),
             'jam_selesai' => RentalPromo::normalizeTimeString($validated['jam_selesai'].':00'),
             'tgl_awal' => $validated['tgl_awal'] ?? null,

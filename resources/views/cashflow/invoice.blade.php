@@ -208,7 +208,11 @@
               @endif
             @endif
             · jam {{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5) }}–{{ substr(\App\Models\RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5) }}
-            (maks. {{ number_format((float) $rental->promo_duration_limit, 2, ',', '.') }} jam ditagihkan)
+            @if ($rental->hasPromoDurationLimit())
+              (maks. {{ number_format((float) $rental->promo_duration_limit, 2, ',', '.') }} jam ditagihkan)
+            @else
+              (tanpa batas durasi, hingga jam selesai)
+            @endif
           </td>
         </tr>
       @endif
