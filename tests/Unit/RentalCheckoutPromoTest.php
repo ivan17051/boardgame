@@ -84,4 +84,64 @@ class RentalCheckoutPromoTest extends TestCase
         $this->assertNull(RentalCheckout::normalizePromoDurationLimit(null));
         $this->assertSame(2.0, RentalCheckout::normalizePromoDurationLimit(2));
     }
+
+    public function test_forfeits_promo_when_checkout_less_than_30_minutes_before_jam_selesai(): void
+    {
+        $start = Carbon::parse('2026-06-22 12:00:00');
+        $end = Carbon::parse('2026-06-22 14:45:00');
+
+        $this->assertTrue(RentalCheckout::forfeitsPromoDueToCheckoutProximity($end, '12:00:00', '15:00:00'));
+        $this->assertFalse(RentalCheckout::forfeitsPromoDueToCheckoutProximity(
+            Carbon::parse('2026-06-22 14:30:00'),
+            '12:00:00',
+            '15:00:00'
+        ));
+    }
+
+    public function test_checkout_near_jam_selesai_charges_entire_session_at_normal_rate(): void
+    {
+        $start = Carbon::parse('2026-06-22 12:00:00');
+        $end = Carbon::parse('2026-06-22 14:45:00');
+        $promoMinutes = RentalCheckout::promoEligibleMinutes($start, $end, '12:00:00', '15:00:00', null, null);
+
+        $calc = RentalCheckout::computeTableRentalPriceFromSession(
+            165,
+            $promoMinutes,
+            50000,
+            30000,
+            null,
+            $start,
+            $end,
+            '12:00:00',
+            '15:00:00'
+        );
+
+        $this->assertSame(0.0, $calc['promo_hours']);
+        $this->assertSame(3.0, $calc['normal_hours']);
+        $this->assertSame(150000.0, $calc['total_harga_sewa']);
+        $this->assertSame('checkout_proximity', $calc['promo_forfeit_reason'] ?? null);
+    }
+
+    public function test_checkout_30_minutes_or_more_before_jam_selesai_keeps_promo_price(): void
+    {
+        $start = Carbon::parse('2026-06-22 12:00:00');
+        $end = Carbon::parse('2026-06-22 14:30:00');
+        $promoMinutes = RentalCheckout::promoEligibleMinutes($start, $end, '12:00:00', '15:00:00', null, null);
+
+        $calc = RentalCheckout::computeTableRentalPriceFromSession(
+            150,
+            $promoMinutes,
+            50000,
+            30000,
+            null,
+            $start,
+            $end,
+            '12:00:00',
+            '15:00:00'
+        );
+
+        $this->assertSame(3.0, $calc['promo_hours']);
+        $this->assertSame(0.0, $calc['normal_hours']);
+        $this->assertSame(90000.0, $calc['total_harga_sewa']);
+    }
 }

@@ -14,6 +14,9 @@ class RentalCheckout
 
     public const CUSTOMER_NON_MEMBER = 'non_member';
 
+    /** Checkout harus minimal sejauh ini (menit) sebelum jam_selesai agar tarif promo berlaku. */
+    public const PROMO_CHECKOUT_MINUTES_BEFORE_SELESAI = 30;
+
     /**
      * Jam ditagihkan: jam penuh + jika sisa menit > 15, tambah 1 jam (min. 1 jam).
      */
@@ -211,6 +214,64 @@ class RentalCheckout
     }
 
     /**
+     * jam_selesai jendela promo pada siklus yang relevan dengan waktu $at (biasanya waktu checkout).
+     */
+    public static function promoJamSelesaiAtForTime(CarbonInterface $at, ?string $jamMulai, ?string $jamSelesai): ?CarbonInterface
+    {
+        if (! $jamMulai || ! $jamSelesai) {
+            return null;
+        }
+
+        $mulai = RentalPromo::normalizeTimeString($jamMulai);
+        $selesai = RentalPromo::normalizeTimeString($jamSelesai);
+        $day = $at->copy()->startOfDay();
+        $windowEnd = $day->copy()->setTimeFromTimeString($selesai);
+
+        if ($mulai <= $selesai) {
+            return $windowEnd;
+        }
+
+        if ($at->format('H:i:s') <= $selesai) {
+            return $windowEnd;
+        }
+
+        return $day->copy()->addDay()->setTimeFromTimeString($selesai);
+    }
+
+    /**
+     * Menit dari $at hingga jam_selesai jendela promo (positif = sebelum jam_selesai).
+     */
+    public static function minutesUntilJamSelesai(CarbonInterface $at, ?string $jamMulai, ?string $jamSelesai): ?float
+    {
+        $jamSelesaiAt = self::promoJamSelesaiAtForTime($at, $jamMulai, $jamSelesai);
+        if (! $jamSelesaiAt) {
+            return null;
+        }
+
+        return ($jamSelesaiAt->getTimestamp() - $at->getTimestamp()) / 60;
+    }
+
+    /**
+     * Checkout kurang dari 30 menit sebelum jam_selesai → seluruh sewa ditagih tarif normal.
+     */
+    public static function forfeitsPromoDueToCheckoutProximity(
+        CarbonInterface $end,
+        ?string $jamMulai,
+        ?string $jamSelesai,
+        int $minimumMinutesBeforeSelesai = self::PROMO_CHECKOUT_MINUTES_BEFORE_SELESAI
+    ): bool {
+        if (! $jamMulai || ! $jamSelesai) {
+            return false;
+        }
+
+        $minutesUntil = self::minutesUntilJamSelesai($end, $jamMulai, $jamSelesai);
+
+        return $minutesUntil !== null
+            && $minutesUntil >= 0
+            && $minutesUntil < $minimumMinutesBeforeSelesai;
+    }
+
+    /**
      * Promo hangus di checkout: batas durasi melewati jam_selesai dan waktu selesai melewati batas durasi.
      */
     public static function forfeitsPromoAtCheckout(
@@ -264,6 +325,20 @@ class RentalCheckout
 
         $limit = self::normalizePromoDurationLimit($promoDurationLimitHours);
 
+        if ($sessionStart && $sessionEnd && self::forfeitsPromoDueToCheckoutProximity(
+            $sessionEnd,
+            $jamMulai,
+            $jamSelesai
+        )) {
+            $calc = self::computeTableRentalPrice($totalBilled, $normalHourlyRate, null, null);
+
+            return array_merge($calc, [
+                'promo_eligible_minutes' => round($promoEligibleMinutes, 2),
+                'promo_forfeited' => true,
+                'promo_forfeit_reason' => 'checkout_proximity',
+            ]);
+        }
+
         if ($limit !== null && $sessionStart && $sessionEnd && self::forfeitsPromoAtCheckout(
             $sessionStart,
             $sessionEnd,
@@ -273,7 +348,11 @@ class RentalCheckout
         )) {
             $calc = self::computeTableRentalPrice($totalBilled, $normalHourlyRate, null, null);
 
-            return array_merge($calc, ['promo_eligible_minutes' => round($promoEligibleMinutes, 2)]);
+            return array_merge($calc, [
+                'promo_eligible_minutes' => round($promoEligibleMinutes, 2),
+                'promo_forfeited' => true,
+                'promo_forfeit_reason' => 'duration_past_jam_selesai',
+            ]);
         }
 
         $promoEligibleBilled = $promoEligibleMinutes > 0
@@ -466,7 +545,13 @@ class RentalCheckout
                     .number_format($sewaCalc['promo_hours'], 2, ',', '.').' jam × Rp '.$promoRateStr
                     .' = Rp '.number_format($sewaCalc['promo_part'], 0, ',', '.').'</li>';
             } elseif (($sewaCalc['promo_eligible_minutes'] ?? 0) > 0 && $sewaCalc['promo_part'] <= 0) {
-                $breakdownHtml .= '<li class="text-warning"><strong>Promo tidak berlaku</strong>: checkout melewati jam promo dan batas durasi — tarif normal untuk seluruh sewa</li>';
+                $forfeitReason = $sewaCalc['promo_forfeit_reason'] ?? null;
+                if ($forfeitReason === 'checkout_proximity') {
+                    $breakdownHtml .= '<li class="text-warning"><strong>Promo tidak berlaku</strong>: checkout kurang dari '
+                        .self::PROMO_CHECKOUT_MINUTES_BEFORE_SELESAI.' menit sebelum jam promo selesai — tarif normal untuk seluruh sewa</li>';
+                } else {
+                    $breakdownHtml .= '<li class="text-warning"><strong>Promo tidak berlaku</strong>: checkout melewati jam promo dan batas durasi — tarif normal untuk seluruh sewa</li>';
+                }
             }
             if ($sewaCalc['normal_hours'] > 0) {
                 $breakdownHtml .= '<li><strong>Bagian tarif normal</strong>: '
