@@ -3,6 +3,7 @@
 @section('content')
 @php
   $fmtRp = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+  $defaultTokoId = \App\Support\TokoScope::canSeeAll() ? 0 : (int) \App\Support\TokoScope::userIdToko();
 @endphp
 
 <div class="app-content-header">
@@ -25,7 +26,7 @@
   <div class="container-fluid">
     <div class="callout callout-info mb-4">
       <p class="mb-0">
-        Untuk transaksi yang sudah selesai tanpa timer kasir. Isi <strong>jam ditagihkan</strong> dan tanggal transaksi — tidak perlu waktu mulai/selesai.
+        Untuk transaksi yang sudah selesai tanpa timer kasir. Isi <strong>meja</strong> dan <strong>jam ditagihkan</strong> untuk sewa meja, atau kosongkan keduanya (jam = 0) untuk input <strong>item tambahan saja</strong>.
       </p>
     </div>
 
@@ -43,9 +44,9 @@
               <input type="date" class="form-control" id="tanggal" name="tanggal" value="{{ now()->toDateString() }}" required />
             </div>
             <div class="col-md-4">
-              <label for="id_meja" class="form-label">Meja <span class="text-danger">*</span></label>
-              <select class="form-select" id="id_meja" name="id_meja" required>
-                <option value="">— Pilih meja —</option>
+              <label for="id_meja" class="form-label">Meja</label>
+              <select class="form-select" id="id_meja" name="id_meja">
+                <option value="">— Tanpa meja —</option>
                 @foreach ($mejas as $m)
                   <option
                     value="{{ $m->id }}"
@@ -77,9 +78,9 @@
               <div class="form-text" id="manualRateHint">Tarif: —</div>
             </div>
             <div class="col-md-4">
-              <label for="jam_ditagihkan" class="form-label">Jam ditagihkan <span class="text-danger">*</span></label>
-              <input type="number" class="form-control" id="jam_ditagihkan" name="jam_ditagihkan" min="1" max="999" value="1" required />
-              <div class="form-text">Jumlah jam yang ditagihkan ke customer.</div>
+              <label for="jam_ditagihkan" class="form-label">Jam ditagihkan</label>
+              <input type="number" class="form-control" id="jam_ditagihkan" name="jam_ditagihkan" min="0" max="999" value="0" />
+              <div class="form-text">0 = tanpa sewa meja. Wajib diisi jika memilih meja.</div>
             </div>
             @if ($rentalPromos->isNotEmpty())
               <div class="col-md-4">
@@ -91,7 +92,7 @@
                       value="{{ $promo->id }}"
                       data-toko-id="{{ (int) $promo->id_toko }}"
                       data-rate="{{ (float) $promo->promo_hourly_rate }}"
-                      data-limit="{{ (float) $promo->promo_duration_limit }}"
+                      data-limit="{{ ($promo->promo_duration_limit !== null && (float) $promo->promo_duration_limit > 0) ? $promo->promo_duration_limit : '' }}"
                       data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
                       data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
                     >
@@ -211,6 +212,7 @@
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   const storeUrl = @json(route('rental.manual.store'));
+  const defaultTokoId = @json($defaultTokoId);
   const form = document.getElementById('manualRentalForm');
   const alertEl = document.getElementById('manualAlert');
   const mejaEl = document.getElementById('id_meja');
@@ -254,19 +256,23 @@
 
   function selectedPromo() {
     const sel = document.getElementById('manual_id_promo');
-    if (!sel || !sel.value) return null;
+    if (!sel || !sel.value || sel.disabled) return null;
     const opt = sel.selectedOptions[0];
     if (!opt) return null;
+    const limitRaw = opt.getAttribute('data-limit');
+    const limit = limitRaw === '' || limitRaw === null ? 0 : parseFloat(limitRaw);
     return {
       rate: parseFloat(opt.getAttribute('data-rate') || '0'),
-      limit: parseFloat(opt.getAttribute('data-limit') || '0'),
+      limit: Number.isNaN(limit) ? 0 : limit,
     };
   }
 
   function computeSewaPrice(billedHours, normalRate, promo) {
     billedHours = Math.max(0, billedHours);
-    if (!promo || !promo.limit || promo.limit <= 0) {
-      return billedHours * normalRate;
+    if (billedHours <= 0) return 0;
+    if (!promo || !promo.rate) return billedHours * normalRate;
+    if (!promo.limit || promo.limit <= 0) {
+      return billedHours * promo.rate;
     }
     if (billedHours <= promo.limit) {
       return billedHours * promo.rate;
@@ -276,12 +282,22 @@
     return promoPart + normalPart;
   }
 
+  function syncPromoAvailability() {
+    const sel = document.getElementById('manual_id_promo');
+    if (!sel) return;
+    const hours = parseInt(jamEl?.value, 10) || 0;
+    const disabled = hours <= 0;
+    sel.disabled = disabled;
+    if (disabled) sel.value = '';
+  }
+
   function syncPromoOptions() {
     const sel = document.getElementById('manual_id_promo');
     const hint = document.getElementById('manualPromoHint');
     if (!sel) return;
+    syncPromoAvailability();
     const opt = mejaEl?.selectedOptions[0];
-    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || 0;
+    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || defaultTokoId || 0;
     Array.from(sel.options).forEach(function (o, idx) {
       if (idx === 0) return;
       const optToko = parseInt(o.getAttribute('data-toko-id') || '0', 10) || 0;
@@ -291,9 +307,13 @@
     });
     const promo = selectedPromo();
     if (hint) {
-      hint.textContent = promo
-        ? 'Promo ' + fmtRp(promo.rate) + '/jam untuk ' + promo.limit + ' jam, lalu tarif normal.'
-        : '';
+      if (!promo) {
+        hint.textContent = '';
+      } else if (!promo.limit || promo.limit <= 0) {
+        hint.textContent = 'Promo ' + fmtRp(promo.rate) + '/jam tanpa batas durasi (hingga jam promo berakhir di checkout).';
+      } else {
+        hint.textContent = 'Promo ' + fmtRp(promo.rate) + '/jam untuk ' + promo.limit + ' jam, lalu tarif normal.';
+      }
     }
   }
 
@@ -312,7 +332,7 @@
     const canSeeAll = @json(\App\Support\TokoScope::canSeeAll());
     if (!canSeeAll) return;
     const opt = mejaEl?.selectedOptions[0];
-    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || 0;
+    const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || defaultTokoId || 0;
 
     document.querySelectorAll('tr[data-item-id][data-item-toko]').forEach(function (row) {
       const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
@@ -347,15 +367,20 @@
     return { positive: positive, discount: discount, net: positive - discount };
   }
 
+  function hasAdditionalItems() {
+    return collectAdditional().length > 0;
+  }
+
   function recalcTotals() {
-    const rate = currentRate();
     const hours = parseInt(jamEl?.value, 10) || 0;
+    const rate = hours > 0 ? currentRate() : 0;
     const sewa = computeSewaPrice(hours, rate, selectedPromo());
     const add = additionalTotal();
     const grand = Math.max(0, sewa + add.net);
 
-    document.getElementById('manualRateHint').textContent =
-      'Tarif normal: ' + fmtRp(rate) + ' / jam (' + (isMember() ? 'Member' : 'Non-Member') + ')';
+    document.getElementById('manualRateHint').textContent = hours > 0
+      ? 'Tarif normal: ' + fmtRp(rate) + ' / jam (' + (isMember() ? 'Member' : 'Non-Member') + ')'
+      : 'Tanpa sewa meja — isi item tambahan di bawah.';
     document.getElementById('previewSewa').textContent = fmtRp(sewa);
     document.getElementById('sumSewa').textContent = fmtRp(sewa);
     document.getElementById('sumAdditionalPositive').textContent = fmtRp(add.positive);
@@ -395,7 +420,10 @@
     syncPromoOptions();
     recalcTotals();
   });
-  jamEl?.addEventListener('input', recalcTotals);
+  jamEl?.addEventListener('input', function () {
+    syncPromoOptions();
+    recalcTotals();
+  });
   document.querySelectorAll('input[name="tipe_customer"]').forEach(function (i) {
     i.addEventListener('change', recalcTotals);
   });
@@ -437,8 +465,17 @@
     const jumlahBayar = parseFloat(jumlahBayarEl?.value || '');
     const hasBukti = buktiEl?.files?.length > 0;
 
-    if (!mejaEl?.value) {
-      alertEl.textContent = 'Pilih meja.';
+    const hours = parseInt(jamEl?.value, 10) || 0;
+    const hasMeja = !!mejaEl?.value;
+    const hasAdditional = hasAdditionalItems();
+
+    if (hours > 0 && !hasMeja) {
+      alertEl.textContent = 'Pilih meja jika ada jam ditagihkan.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    if (hours <= 0 && !hasAdditional) {
+      alertEl.textContent = 'Isi jam ditagihkan atau pilih minimal satu item tambahan.';
       alertEl.classList.remove('d-none');
       return;
     }
@@ -460,10 +497,10 @@
 
       const fd = new FormData();
       fd.append('tanggal', document.getElementById('tanggal').value);
-      fd.append('id_meja', mejaEl.value);
+      if (mejaEl.value) fd.append('id_meja', mejaEl.value);
       fd.append('nama_customer', document.getElementById('nama_customer').value.trim());
       fd.append('tipe_customer', document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member');
-      fd.append('jam_ditagihkan', jamEl.value);
+      fd.append('jam_ditagihkan', String(hours));
       const idPromo = document.getElementById('manual_id_promo')?.value;
       if (idPromo) fd.append('id_promo', idPromo);
       fd.append('additional_items', JSON.stringify(collectAdditional()));
