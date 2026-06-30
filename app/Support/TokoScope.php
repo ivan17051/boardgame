@@ -69,8 +69,17 @@ class TokoScope
             return $query;
         }
 
-        return $query->whereHas('meja', function (Builder $q) {
-            $q->where('id_toko', self::userIdToko());
+        $idToko = self::userIdToko();
+
+        return $query->where(function (Builder $q) use ($idToko) {
+            $q->whereHas('meja', function (Builder $mq) use ($idToko) {
+                $mq->where('id_toko', $idToko);
+            })->orWhere(function (Builder $inner) use ($idToko) {
+                $inner->whereNull('id_meja')
+                    ->whereHas('additionalItems.additionalItem', function (Builder $aq) use ($idToko) {
+                        $aq->where('id_toko', $idToko);
+                    });
+            });
         });
     }
 
@@ -136,12 +145,28 @@ class TokoScope
 
     public static function authorizeRental(Rental $rental): void
     {
-        $rental->loadMissing('meja');
-        if (! $rental->meja) {
-            abort(404);
+        if (self::canSeeAll()) {
+            return;
         }
 
-        self::authorizeMeja($rental->meja);
+        $rental->loadMissing('meja');
+        if ($rental->meja) {
+            self::authorizeMeja($rental->meja);
+
+            return;
+        }
+
+        $rental->loadMissing('additionalItems.additionalItem');
+        $idToko = self::userIdToko();
+        $allowed = $rental->additionalItems->contains(function ($line) use ($idToko) {
+            $master = $line->additionalItem;
+
+            return $master && (int) $master->id_toko === $idToko;
+        });
+
+        if (! $allowed) {
+            abort(404);
+        }
     }
 
     public static function authorizeCashFlow(CashFlow $cashFlow): void

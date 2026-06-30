@@ -66,6 +66,57 @@
           <dd class="col-sm-9 mb-1" id="rental_edit_status">—</dd>
         </dl>
 
+        <div class="border rounded bg-light p-3 mb-3" id="rental_edit_detail_section">
+          <h6 class="fw-semibold mb-2">Rincian sewa</h6>
+          <dl class="row small mb-0" id="rental_edit_detail_dl">
+            <dt class="col-sm-4 text-secondary rental-detail-table-row">Periode</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-table-row" id="rental_detail_periode">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-table-row">Durasi</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-table-row" id="rental_detail_durasi">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-table-row">Jam ditagihkan</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-table-row" id="rental_detail_billed">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-table-row">Tarif normal</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-table-row" id="rental_detail_tarif">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-promo-row d-none">Promo</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-promo-row d-none" id="rental_detail_promo">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-table-row">Subtotal sewa meja</dt>
+            <dd class="col-sm-8 mb-0 font-monospace rental-detail-table-row" id="rental_detail_sewa">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-additional-only-row d-none">Tanggal transaksi</dt>
+            <dd class="col-sm-8 mb-1 rental-detail-additional-only-row d-none" id="rental_detail_tanggal">—</dd>
+            <dt class="col-sm-4 text-secondary rental-detail-additional-only-row d-none">Jenis transaksi</dt>
+            <dd class="col-sm-8 mb-0 rental-detail-additional-only-row d-none" id="rental_detail_additional_only">Hanya item tambahan</dd>
+          </dl>
+          <div id="rental_edit_additional_wrap" class="mt-3 d-none">
+            <h6 class="fw-semibold small mb-2">Item tambahan &amp; diskon</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered bg-white mb-2 small">
+                <thead class="table-light">
+                  <tr>
+                    <th>Item</th>
+                    <th class="text-end" style="width:56px">Qty</th>
+                    <th class="text-end" style="width:100px">Harga</th>
+                    <th class="text-end" style="width:110px">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody id="rental_edit_additional_tbody"></tbody>
+                <tfoot>
+                  <tr>
+                    <th colspan="3" class="text-end">Subtotal item</th>
+                    <th class="text-end font-monospace" id="rental_detail_additional_total">—</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between small fw-semibold border-top pt-2 mt-2">
+            <span>Total tagihan (rincian)</span>
+            <span class="font-monospace" id="rental_detail_grand">—</span>
+          </div>
+        </div>
+
+        <hr class="my-3" />
+        <h6 class="fw-semibold mb-3">Ubah data</h6>
+
         <div class="row g-3">
           <div class="col-md-6">
             <label for="rental_edit_nama_customer" class="form-label">Nama pelanggan <span class="text-danger">*</span></label>
@@ -183,6 +234,122 @@
   const activeNote = document.querySelector('.rental-edit-active-note');
   let currentStatus = '';
 
+  function fmtRp(n) {
+    const val = Number(n || 0);
+    if (val < 0) {
+      return '− Rp ' + Math.abs(val).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+    }
+    return 'Rp ' + val.toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  }
+
+  function renderRentalDetails(d) {
+    const detail = d.rental_detail || {};
+    const items = Array.isArray(d.additional_items) ? d.additional_items : [];
+    const isAdditionalOnly = !!detail.is_additional_only || (!detail.has_table_rental && items.length > 0);
+
+    document.querySelectorAll('.rental-detail-table-row').forEach(function (el) {
+      el.classList.toggle('d-none', isAdditionalOnly);
+    });
+    document.querySelectorAll('.rental-detail-additional-only-row').forEach(function (el) {
+      el.classList.toggle('d-none', !isAdditionalOnly);
+    });
+
+    const tanggalEl = document.getElementById('rental_detail_tanggal');
+    if (tanggalEl && isAdditionalOnly) {
+      tanggalEl.textContent = detail.waktu_start && detail.waktu_start !== '—' ? detail.waktu_start : '—';
+    }
+
+    const sectionTitle = document.querySelector('#rental_edit_detail_section h6');
+    if (sectionTitle) {
+      sectionTitle.textContent = isAdditionalOnly ? 'Rincian item tambahan' : 'Rincian sewa';
+    }
+
+    const periodeEl = document.getElementById('rental_detail_periode');
+    if (periodeEl && !isAdditionalOnly) {
+      periodeEl.textContent = detail.waktu_start && detail.waktu_start !== '—'
+        ? detail.waktu_start + ' — ' + (detail.waktu_end || '—')
+        : '—';
+    }
+
+    const durasiEl = document.getElementById('rental_detail_durasi');
+    if (durasiEl && !isAdditionalOnly) {
+      if (detail.durasi_hms && detail.durasi_hms !== '—') {
+        const menitStr = detail.durasi_menit != null
+          ? ' (' + Number(detail.durasi_menit).toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' menit)'
+          : '';
+        durasiEl.textContent = detail.durasi_hms + menitStr;
+      } else {
+        durasiEl.textContent = '—';
+      }
+    }
+
+    const billedEl = document.getElementById('rental_detail_billed');
+    if (billedEl && !isAdditionalOnly) {
+      billedEl.textContent = detail.billed_hours > 0 ? detail.billed_hours + ' jam' : '—';
+    }
+
+    const tarifEl = document.getElementById('rental_detail_tarif');
+    if (tarifEl && !isAdditionalOnly) {
+      tarifEl.textContent = detail.harga_per_jam != null && detail.harga_per_jam > 0
+        ? fmtRp(detail.harga_per_jam) + ' / jam'
+        : '—';
+    }
+
+    document.querySelectorAll('.rental-detail-promo-row').forEach(function (el) {
+      el.classList.toggle('d-none', isAdditionalOnly || !detail.promo);
+    });
+    const promoEl = document.getElementById('rental_detail_promo');
+    if (promoEl && detail.promo) {
+      let promoText = (detail.promo.nama || 'Promo') + ' — ' + fmtRp(detail.promo.hourly_rate) + ' / jam';
+      if (detail.promo.jam_mulai && detail.promo.jam_selesai) {
+        promoText += ' · jam ' + detail.promo.jam_mulai + '–' + detail.promo.jam_selesai;
+      }
+      if (detail.promo.duration_limit != null && detail.promo.duration_limit > 0) {
+        promoText += ' (maks. ' + detail.promo.duration_limit + ' jam)';
+      } else {
+        promoText += ' (tanpa batas durasi)';
+      }
+      promoEl.textContent = promoText;
+    }
+
+    const sewaEl = document.getElementById('rental_detail_sewa');
+    if (sewaEl && !isAdditionalOnly) {
+      sewaEl.textContent = fmtRp(detail.total_harga_sewa || 0);
+    }
+
+    const additionalWrap = document.getElementById('rental_edit_additional_wrap');
+    const tbody = document.getElementById('rental_edit_additional_tbody');
+    if (tbody) tbody.innerHTML = '';
+
+    if (items.length > 0 && tbody) {
+      items.forEach(function (line) {
+        const tr = document.createElement('tr');
+        const label = line.is_discount ? 'Diskon — ' + line.nama : line.nama;
+        const hargaText = line.is_discount ? '− ' + fmtRp(line.harga) : fmtRp(line.harga);
+        tr.innerHTML =
+          '<td>' + label.replace(/</g, '&lt;') + '</td>' +
+          '<td class="text-end">' + line.qty + '</td>' +
+          '<td class="text-end font-monospace">' + hargaText + '</td>' +
+          '<td class="text-end font-monospace">' + fmtRp(line.subtotal) + '</td>';
+        tbody.appendChild(tr);
+      });
+      if (additionalWrap) additionalWrap.classList.remove('d-none');
+    } else if (additionalWrap) {
+      additionalWrap.classList.add('d-none');
+    }
+
+    const addTotalEl = document.getElementById('rental_detail_additional_total');
+    if (addTotalEl) {
+      addTotalEl.textContent = fmtRp(detail.total_harga_additional || 0);
+    }
+
+    const grandEl = document.getElementById('rental_detail_grand');
+    if (grandEl) {
+      const grand = (detail.total_harga_sewa || 0) + (detail.total_harga_additional || 0);
+      grandEl.textContent = fmtRp(grand);
+    }
+  }
+
   function hideEditAlert() {
     if (!editAlert) return;
     editAlert.classList.add('d-none');
@@ -295,7 +462,9 @@
         const d = r.body;
         currentStatus = d.status || '';
         editIdEl.value = d.id;
-        document.getElementById('rental_edit_meja').textContent = (d.nama_meja || '—') + (d.nama_toko ? ' · ' + d.nama_toko : '');
+        document.getElementById('rental_edit_meja').textContent = d.nama_meja === 'Tanpa meja'
+          ? 'Tanpa meja'
+          : (d.nama_meja || '—') + (d.nama_toko && d.nama_toko !== '—' ? ' · ' + d.nama_toko : '');
         document.getElementById('rental_edit_status').textContent = d.status === 'active' ? 'Aktif' : (d.status === 'completed' ? 'Selesai' : d.status);
         document.getElementById('rental_edit_nama_customer').value = d.nama_customer || '';
         document.getElementById('rental_edit_tipe_customer').value = d.tipe_customer || 'non_member';
@@ -306,6 +475,7 @@
         const buktiEl = document.getElementById('rental_edit_bukti');
         if (buktiEl) buktiEl.value = '';
         setBuktiExisting(d.bukti_url || '');
+        renderRentalDetails(d);
         toggleCompletedFields(d.status === 'completed');
         if (editModal) editModal.show();
       })

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
+use App\Models\RentalPromo;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
 use App\Support\RentalPayment;
@@ -93,14 +94,14 @@ class RentalHistoryController extends Controller
     public function show(Rental $rental): JsonResponse
     {
         TokoScope::authorizeRental($rental);
-        $rental->loadMissing('meja.toko');
+        $rental->loadMissing(['meja.toko', 'additionalItems']);
 
-        return response()->json([
+        return response()->json(array_merge([
             'id' => $rental->id,
             'nama_customer' => $rental->nama_customer,
             'tipe_customer' => $rental->tipe_customer,
             'status' => $rental->status,
-            'nama_meja' => $rental->meja ? $rental->meja->nama : '—',
+            'nama_meja' => $rental->meja ? $rental->meja->nama : 'Tanpa meja',
             'nama_toko' => $rental->meja && $rental->meja->toko ? $rental->meja->toko->nama : '—',
             'metode_pembayaran' => $rental->metode_pembayaran,
             'jumlah_bayar' => $rental->jumlah_bayar !== null ? (float) $rental->jumlah_bayar : null,
@@ -111,7 +112,7 @@ class RentalHistoryController extends Controller
             'can_invoice' => RentalInvoice::canIssue($rental),
             'bukti_url' => $rental->buktiUrl(),
             'has_bukti' => ! empty($rental->bukti_transaksi),
-        ]);
+        ], $this->rentalDetailPayload($rental)));
     }
 
     public function update(Request $request, Rental $rental): JsonResponse
@@ -133,7 +134,7 @@ class RentalHistoryController extends Controller
         DB::transaction(function () use ($rental) {
             $locked = Rental::query()->whereKey($rental->id)->lockForUpdate()->firstOrFail();
 
-            if ($locked->isActive()) {
+            if ($locked->isActive() && $locked->id_meja) {
                 Meja::query()
                     ->whereKey($locked->id_meja)
                     ->update(['status' => 'active']);
@@ -257,6 +258,75 @@ class RentalHistoryController extends Controller
     /**
      * @return array<string, mixed>
      */
+    private function rentalDetailPayload(Rental $rental): array
+    {
+        $totalMinutes = $rental->total_durasi !== null
+            ? (float) $rental->total_durasi
+            : ($rental->waktu_start && $rental->waktu_end
+                ? max(0, $rental->waktu_end->diffInMinutes($rental->waktu_start))
+                : 0);
+
+        $totalSeconds = (int) round($totalMinutes * 60);
+        $billedHours = $totalMinutes > 0 ? RentalCheckout::billedHours($totalMinutes) : 0;
+        $totalHargaSewa = (float) ($rental->total_harga_sewa ?? 0);
+        $totalHargaAdditional = (float) ($rental->total_harga_additional ?? 0);
+
+        $promo = null;
+        if ($rental->hasPromo()) {
+            $jamMulai = $rental->promo_jam_mulai
+                ? substr(RentalPromo::normalizeTimeString($rental->promo_jam_mulai), 0, 5)
+                : null;
+            $jamSelesai = $rental->promo_jam_selesai
+                ? substr(RentalPromo::normalizeTimeString($rental->promo_jam_selesai), 0, 5)
+                : null;
+
+            $promo = [
+                'nama' => $rental->promo_nama,
+                'hourly_rate' => (float) $rental->promo_hourly_rate,
+                'duration_limit' => $rental->hasPromoDurationLimit()
+                    ? (float) $rental->promo_duration_limit
+                    : null,
+                'jam_mulai' => $jamMulai,
+                'jam_selesai' => $jamSelesai,
+            ];
+        }
+
+        $additionalItems = $rental->additionalItems->map(function ($line) {
+            return [
+                'nama' => $line->nama,
+                'qty' => (int) $line->qty,
+                'harga' => (float) $line->harga,
+                'subtotal' => (float) $line->subtotal,
+                'is_discount' => (float) $line->subtotal < 0,
+            ];
+        })->values()->all();
+
+        $hasTableRental = $totalHargaSewa > 0 || $billedHours > 0;
+        $isAdditionalOnly = ! $hasTableRental && count($additionalItems) > 0;
+
+        return [
+            'rental_detail' => [
+                'waktu_start' => $rental->waktu_start ? $rental->waktu_start->format('d/m/Y H:i') : '—',
+                'waktu_end' => $rental->waktu_end
+                    ? $rental->waktu_end->format('d/m/Y H:i')
+                    : ($rental->isActive() ? 'Masih berjalan' : '—'),
+                'durasi_hms' => $totalSeconds > 0 ? RentalCheckout::formatHms($totalSeconds) : '—',
+                'durasi_menit' => $totalMinutes > 0 ? round($totalMinutes, 2) : null,
+                'billed_hours' => $billedHours,
+                'harga_per_jam' => $rental->harga !== null ? (float) $rental->harga : null,
+                'total_harga_sewa' => $totalHargaSewa,
+                'total_harga_additional' => $totalHargaAdditional,
+                'has_table_rental' => $hasTableRental,
+                'is_additional_only' => $isAdditionalOnly,
+                'promo' => $promo,
+            ],
+            'additional_items' => $additionalItems,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function rowPayload(Rental $rental): array
     {
         $meja = $rental->meja;
@@ -272,7 +342,9 @@ class RentalHistoryController extends Controller
             'waktu_start' => $rental->waktu_start ? $rental->waktu_start->format('d/m/Y H:i') : '—',
             'waktu_end' => $rental->waktu_end ? $rental->waktu_end->format('d/m/Y H:i') : '—',
             'nama_customer' => e($rental->nama_customer),
-            'meja_toko' => e(($meja ? $meja->nama : '—').($toko ? ' · '.$toko->nama : '')),
+            'meja_toko' => e($meja
+                ? $meja->nama.($toko ? ' · '.$toko->nama : '')
+                : 'Item tambahan'),
             'tipe_customer' => $rental->isMember() ? 'Member' : 'Non-Member',
             'status_html' => '<span class="badge text-bg-'.$statusClass.'">'.e($statusLabel).'</span>',
             'total_harga' => 'Rp '.number_format($rental->billTotal(), 0, ',', '.'),
