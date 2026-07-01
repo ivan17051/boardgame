@@ -154,7 +154,16 @@ class RentalPromo extends Model
             return $date->format('Y-m-d');
         }
 
-        return (string) $date;
+        $date = trim((string) $date);
+        if ($date === '' || $date === '0000-00-00' || strpos($date, '0000-00-00') === 0) {
+            return null;
+        }
+
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $date, $matches)) {
+            return $matches[1];
+        }
+
+        return $date;
     }
 
     public function jamMulaiFormatted(): string

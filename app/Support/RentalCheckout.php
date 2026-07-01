@@ -325,7 +325,7 @@ class RentalCheckout
 
         $limit = self::normalizePromoDurationLimit($promoDurationLimitHours);
 
-        if ($sessionStart && $sessionEnd && self::forfeitsPromoDueToCheckoutProximity(
+        if ($limit !== null && $sessionStart && $sessionEnd && self::forfeitsPromoDueToCheckoutProximity(
             $sessionEnd,
             $jamMulai,
             $jamSelesai
@@ -479,8 +479,8 @@ class RentalCheckout
                 $end,
                 $jamMulai,
                 $jamSelesai,
-                $rental->promo_tgl_awal,
-                $rental->promo_tgl_akhir
+                RentalPromo::normalizeDateString($rental->promo_tgl_awal),
+                RentalPromo::normalizeDateString($rental->promo_tgl_akhir)
             );
             $sewaCalc = self::computeTableRentalPriceFromSession(
                 $totalMinutes,

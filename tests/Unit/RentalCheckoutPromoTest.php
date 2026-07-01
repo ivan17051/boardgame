@@ -98,7 +98,31 @@ class RentalCheckoutPromoTest extends TestCase
         ));
     }
 
-    public function test_checkout_near_jam_selesai_charges_entire_session_at_normal_rate(): void
+    public function test_checkout_near_jam_selesai_charges_entire_session_at_normal_rate_when_duration_limited(): void
+    {
+        $start = Carbon::parse('2026-06-22 12:00:00');
+        $end = Carbon::parse('2026-06-22 14:45:00');
+        $promoMinutes = RentalCheckout::promoEligibleMinutes($start, $end, '12:00:00', '15:00:00', null, null);
+
+        $calc = RentalCheckout::computeTableRentalPriceFromSession(
+            165,
+            $promoMinutes,
+            50000,
+            30000,
+            3,
+            $start,
+            $end,
+            '12:00:00',
+            '15:00:00'
+        );
+
+        $this->assertSame(0.0, $calc['promo_hours']);
+        $this->assertSame(3.0, $calc['normal_hours']);
+        $this->assertSame(150000.0, $calc['total_harga_sewa']);
+        $this->assertSame('checkout_proximity', $calc['promo_forfeit_reason'] ?? null);
+    }
+
+    public function test_unlimited_promo_keeps_price_when_checkout_within_promo_hours_near_jam_selesai(): void
     {
         $start = Carbon::parse('2026-06-22 12:00:00');
         $end = Carbon::parse('2026-06-22 14:45:00');
@@ -116,10 +140,27 @@ class RentalCheckoutPromoTest extends TestCase
             '15:00:00'
         );
 
-        $this->assertSame(0.0, $calc['promo_hours']);
-        $this->assertSame(3.0, $calc['normal_hours']);
-        $this->assertSame(150000.0, $calc['total_harga_sewa']);
-        $this->assertSame('checkout_proximity', $calc['promo_forfeit_reason'] ?? null);
+        $this->assertSame(3.0, $calc['promo_hours']);
+        $this->assertSame(0.0, $calc['normal_hours']);
+        $this->assertSame(90000.0, $calc['total_harga_sewa']);
+        $this->assertArrayNotHasKey('promo_forfeit_reason', $calc);
+    }
+
+    public function test_promo_eligible_minutes_handles_datetime_date_strings(): void
+    {
+        $start = Carbon::parse('2026-06-22 13:00:00');
+        $end = Carbon::parse('2026-06-22 14:00:00');
+
+        $minutes = RentalCheckout::promoEligibleMinutes(
+            $start,
+            $end,
+            '12:00:00',
+            '15:00:00',
+            '2026-06-22 00:00:00',
+            null
+        );
+
+        $this->assertSame(60.0, $minutes);
     }
 
     public function test_checkout_30_minutes_or_more_before_jam_selesai_keeps_promo_price(): void
