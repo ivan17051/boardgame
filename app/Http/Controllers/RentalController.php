@@ -48,7 +48,7 @@ class RentalController extends Controller
         $rentalPromos = collect();
         if (Schema::hasTable('m_rental_promo')) {
             $rentalPromos = TokoScope::scopeRentalPromos(RentalPromo::query())
-                ->activeAt(now())
+                ->activeOnDate(now())
                 ->orderBy('nama')
                 ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai', 'tgl_awal', 'tgl_akhir']);
         }
@@ -354,10 +354,10 @@ class RentalController extends Controller
             return $empty;
         }
 
-        $snapshot = RentalCheckout::resolvePromoSnapshot($idPromo, (int) $meja->id_toko, $at, true);
+        $snapshot = RentalCheckout::resolvePromoSnapshot($idPromo, (int) $meja->id_toko, $at, false);
         if (! $snapshot) {
             throw ValidationException::withMessages([
-                'id_promo' => ['Promo tidak berlaku saat ini (di luar periode/tanggal atau jam promo) atau tidak aktif untuk toko meja ini.'],
+                'id_promo' => ['Promo tidak valid, tidak aktif untuk tanggal ini, atau tidak berlaku untuk toko meja ini.'],
             ]);
         }
 

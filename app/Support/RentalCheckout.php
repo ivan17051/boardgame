@@ -406,11 +406,21 @@ class RentalCheckout
 
         if ($requireActiveTime) {
             $query->activeAt($at);
+        } else {
+            $query->activeOnDate($at);
         }
 
         $promo = $query->first();
 
-        if (! $promo || ($requireActiveTime && ! $promo->isActiveAt($at))) {
+        if (! $promo) {
+            return null;
+        }
+
+        if ($requireActiveTime && ! $promo->isActiveAt($at)) {
+            return null;
+        }
+
+        if (! $requireActiveTime && ! $promo->isActiveOnDate($at)) {
             return null;
         }
 
@@ -456,13 +466,19 @@ class RentalCheckout
         $promoLimit = $rental->hasPromo()
             ? self::normalizePromoDurationLimit($rental->promo_duration_limit)
             : null;
+        $jamMulai = $rental->promo_jam_mulai
+            ? RentalPromo::normalizeTimeString($rental->promo_jam_mulai)
+            : null;
+        $jamSelesai = $rental->promo_jam_selesai
+            ? RentalPromo::normalizeTimeString($rental->promo_jam_selesai)
+            : null;
 
-        if ($rental->hasPromo() && $rental->promo_jam_mulai && $rental->promo_jam_selesai) {
+        if ($rental->hasPromo() && $jamMulai && $jamSelesai) {
             $promoEligibleMinutes = self::promoEligibleMinutes(
                 $start,
                 $end,
-                $rental->promo_jam_mulai,
-                $rental->promo_jam_selesai,
+                $jamMulai,
+                $jamSelesai,
                 $rental->promo_tgl_awal,
                 $rental->promo_tgl_akhir
             );
@@ -474,8 +490,8 @@ class RentalCheckout
                 $promoLimit,
                 $start,
                 $end,
-                $rental->promo_jam_mulai,
-                $rental->promo_jam_selesai
+                $jamMulai,
+                $jamSelesai
             );
         } else {
             $sewaCalc = self::computeTableRentalPrice($billedHours, $normalRate, $promoRate, $promoLimit);

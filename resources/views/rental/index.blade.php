@@ -117,7 +117,7 @@
                     value="{{ $promo->id }}"
                     data-toko-id="{{ (int) $promo->id_toko }}"
                     data-rate="{{ (float) $promo->promo_hourly_rate }}"
-                    data-limit="{{ (float) $promo->promo_duration_limit }}"
+                    data-limit="{{ ($promo->promo_duration_limit !== null && (float) $promo->promo_duration_limit > 0) ? $promo->promo_duration_limit : '' }}"
                     data-jam-mulai="{{ $promo->jamMulaiFormatted() }}"
                     data-jam-selesai="{{ $promo->jamSelesaiFormatted() }}"
                   >
@@ -370,14 +370,20 @@
     if (promoHint) {
       if (sel && sel.value) {
         const rate = parseFloat(sel.getAttribute('data-rate') || '0');
-        const limit = parseFloat(sel.getAttribute('data-limit') || '0');
+        const limitRaw = sel.getAttribute('data-limit');
+        const limit = limitRaw === '' || limitRaw === null ? 0 : parseFloat(limitRaw);
         const jamMulai = sel.getAttribute('data-jam-mulai') || '';
         const jamSelesai = sel.getAttribute('data-jam-selesai') || '';
-        promoHint.textContent = 'Promo: ' + fmtRp(rate) + '/jam · jam ' + jamMulai + '–' + jamSelesai
-          + ' (maks. ' + limit + ' jam ditagihkan dengan tarif promo).';
+        let hint = 'Promo: ' + fmtRp(rate) + '/jam · jam ' + jamMulai + '–' + jamSelesai;
+        if (!limit || limit <= 0 || Number.isNaN(limit)) {
+          hint += ' (tanpa batas durasi; tarif promo dalam jam promo saat checkout).';
+        } else {
+          hint += ' (maks. ' + limit + ' jam ditagihkan dengan tarif promo).';
+        }
+        promoHint.textContent = hint;
       } else {
         promoHint.textContent = visibleCount > 0
-          ? 'Opsional. Hingga batas jam promo, sisanya tarif normal.'
+          ? 'Opsional. Tarif promo berlaku untuk menit sewa dalam jam promo saat checkout.'
           : '';
       }
     }

@@ -52,16 +52,9 @@ class RentalPromo extends Model
 
     public function scopeActiveAt(Builder $query, CarbonInterface $at): Builder
     {
-        $date = $at->format('Y-m-d');
         $time = $at->format('H:i:s');
 
-        return $query->active()
-            ->where(function (Builder $q) use ($date) {
-                $q->whereNull('tgl_awal')->orWhere('tgl_awal', '<=', $date);
-            })
-            ->where(function (Builder $q) use ($date) {
-                $q->whereNull('tgl_akhir')->orWhere('tgl_akhir', '>=', $date);
-            })
+        return $query->activeOnDate($at)
             ->where(function (Builder $q) use ($time) {
                 $q->where(function (Builder $inner) use ($time) {
                     $inner->whereColumn('jam_mulai', '<=', 'jam_selesai')
@@ -77,10 +70,32 @@ class RentalPromo extends Model
             });
     }
 
-    public static function normalizeTimeString(?string $time): string
+    public function scopeActiveOnDate(Builder $query, CarbonInterface $at): Builder
     {
+        $date = $at->format('Y-m-d');
+
+        return $query->active()
+            ->where(function (Builder $q) use ($date) {
+                $q->whereNull('tgl_awal')->orWhere('tgl_awal', '<=', $date);
+            })
+            ->where(function (Builder $q) use ($date) {
+                $q->whereNull('tgl_akhir')->orWhere('tgl_akhir', '>=', $date);
+            });
+    }
+
+    public static function normalizeTimeString($time): string
+    {
+        if ($time instanceof CarbonInterface) {
+            return $time->format('H:i:s');
+        }
+
         if ($time === null || $time === '') {
             return '00:00:00';
+        }
+
+        $time = trim((string) $time);
+        if (strpos($time, ' ') !== false) {
+            $time = trim(substr($time, strrpos($time, ' ') + 1));
         }
 
         $parts = explode(':', $time);
@@ -89,6 +104,44 @@ class RentalPromo extends Model
         $s = (int) ($parts[2] ?? 0);
 
         return sprintf('%02d:%02d:%02d', $h, $m, $s);
+    }
+
+    public function isActiveOnDate(CarbonInterface $at): bool
+    {
+        if (! $this->is_active) {
+            return false;
+        }
+
+        $date = $at->format('Y-m-d');
+        $tglAwal = self::normalizeDateString($this->tgl_awal);
+        $tglAkhir = self::normalizeDateString($this->tgl_akhir);
+
+        if ($tglAwal && $date < $tglAwal) {
+            return false;
+        }
+
+        if ($tglAkhir && $date > $tglAkhir) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function isActiveAt(CarbonInterface $at): bool
+    {
+        if (! $this->isActiveOnDate($at)) {
+            return false;
+        }
+
+        $time = $at->format('H:i:s');
+        $mulai = self::normalizeTimeString($this->jam_mulai);
+        $selesai = self::normalizeTimeString($this->jam_selesai);
+
+        if ($mulai <= $selesai) {
+            return $time >= $mulai && $time <= $selesai;
+        }
+
+        return $time >= $mulai || $time <= $selesai;
     }
 
     public static function normalizeDateString($date): ?string
@@ -139,34 +192,5 @@ class RentalPromo extends Model
         }
 
         return $this->tglAwalFormatted().' – '.$this->tglAkhirFormatted();
-    }
-
-    public function isActiveAt(CarbonInterface $at): bool
-    {
-        if (! $this->is_active) {
-            return false;
-        }
-
-        $date = $at->format('Y-m-d');
-        $tglAwal = self::normalizeDateString($this->tgl_awal);
-        $tglAkhir = self::normalizeDateString($this->tgl_akhir);
-
-        if ($tglAwal && $date < $tglAwal) {
-            return false;
-        }
-
-        if ($tglAkhir && $date > $tglAkhir) {
-            return false;
-        }
-
-        $time = $at->format('H:i:s');
-        $mulai = self::normalizeTimeString($this->jam_mulai);
-        $selesai = self::normalizeTimeString($this->jam_selesai);
-
-        if ($mulai <= $selesai) {
-            return $time >= $mulai && $time <= $selesai;
-        }
-
-        return $time >= $mulai || $time <= $selesai;
     }
 }
