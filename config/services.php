@@ -30,4 +30,9 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'bornpadel' => [
+        'api_url' => env('BORNPADEL_API_URL', 'http://localhost/bornpadel/api/v1/external'),
+        'api_token' => env('BORNPADEL_API_TOKEN'),
+    ],
+
 ];

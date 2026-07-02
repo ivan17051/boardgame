@@ -8,6 +8,7 @@ use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\ManualRentalController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\PublicMahjongTournamentController;
 use App\Http\Controllers\RentalPromoController;
 use App\Http\Controllers\RentalHistoryController;
 use App\Http\Controllers\TokoController;
@@ -35,6 +36,9 @@ Route::get('/login', [LoginController::class, 'create'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('login.store');
+
+Route::get('/turnamen/mahjong', [PublicMahjongTournamentController::class, 'index'])
+    ->name('public.mahjong-tournaments');
 
 Route::get('/', function () {
     if (auth()->check()) {
