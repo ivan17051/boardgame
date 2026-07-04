@@ -32,7 +32,7 @@ return [
 
     'bornpadel' => [
         'api_url' => env('BORNPADEL_API_URL', 'http://localhost/bornpadel/api/v1/external'),
-        'api_token' => env('BORNPADEL_API_TOKEN'),
+        'api_token' => env('BORNPADEL_API_TOKEN', '91972885-619d-491b-905d-429b51691214'),
     ],
 
 ];

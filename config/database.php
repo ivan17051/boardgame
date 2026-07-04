@@ -63,6 +63,22 @@ return [
             ]) : [],
         ],
 
+        'bornpadel' => [
+            'driver' => 'mysql',
+            'host' => env('BORNPADEL_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('BORNPADEL_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('BORNPADEL_DB_DATABASE', 'dbbornpadel'),
+            'username' => env('BORNPADEL_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('BORNPADEL_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),

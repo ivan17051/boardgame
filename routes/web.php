@@ -37,17 +37,20 @@ Route::post('/login', [LoginController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('login.store');
 
+Route::get('/', [PublicMahjongTournamentController::class, 'index'])
+    ->name('home');
 Route::get('/turnamen/mahjong', [PublicMahjongTournamentController::class, 'index'])
     ->name('public.mahjong-tournaments');
-
-Route::get('/', function () {
-    if (auth()->check()) {
-        return redirect()->route('rental.index');
-    }
-
-    // return app(GuestRentalController::class)->index(request());
-    return redirect()->route('login');
-})->name('home');
+Route::get('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController::class, 'showRegister'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.register');
+Route::post('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController::class, 'submitRegister'])
+    ->whereNumber('id')
+    ->middleware('throttle:10,1')
+    ->name('public.mahjong-tournaments.register.store');
+Route::get('/turnamen/mahjong/{id}/klasemen', [PublicMahjongTournamentController::class, 'standings'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.standings');
 
 Route::prefix('guest')->name('guest.')->group(function () {
     Route::get('/sewa', function () {

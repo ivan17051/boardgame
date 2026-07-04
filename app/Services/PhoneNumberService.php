@@ -1,0 +1,81 @@
+<?php
+
+namespace App\Services;
+
+class PhoneNumberService
+{
+    public function countries(): array
+    {
+        return config('phone_countries', []);
+    }
+
+    public function defaultCountryCode(): string
+    {
+        foreach ($this->countries() as $country) {
+            if (! empty($country['default'])) {
+                return $country['code'];
+            }
+        }
+
+        return '+62';
+    }
+
+    public function parse(?string $fullNumber): array
+    {
+        $full = trim((string) $fullNumber);
+
+        if ($full === '') {
+            return [
+                'country_code' => $this->defaultCountryCode(),
+                'local_number' => '',
+                'full' => '',
+            ];
+        }
+
+        if (strpos($full, '+') !== 0) {
+            $digits = preg_replace('/\D+/', '', $full) ?? '';
+
+            return [
+                'country_code' => $this->defaultCountryCode(),
+                'local_number' => $digits,
+                'full' => $this->defaultCountryCode().$this->sanitizeLocalNumber($digits),
+            ];
+        }
+
+        $codes = collect($this->countries())
+            ->pluck('code')
+            ->sortByDesc(function (string $code) {
+                return strlen($code);
+            })
+            ->values();
+
+        foreach ($codes as $code) {
+            if (strpos($full, $code) === 0) {
+                $local = substr($full, strlen($code));
+
+                return [
+                    'country_code' => $code,
+                    'local_number' => $this->sanitizeLocalNumber($local),
+                    'full' => $code.$this->sanitizeLocalNumber($local),
+                ];
+            }
+        }
+
+        return [
+            'country_code' => $this->defaultCountryCode(),
+            'local_number' => ltrim($full, '+'),
+            'full' => $full,
+        ];
+    }
+
+    public function sanitizeLocalNumber(string $number): string
+    {
+        $digits = preg_replace('/\D+/', '', $number) ?? '';
+
+        if (strpos($digits, '0') === 0) {
+            $digits = ltrim($digits, '0');
+        }
+
+        return $digits;
+    }
+}
