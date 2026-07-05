@@ -67,6 +67,21 @@
   .leader-row {
     background: rgba(0, 97, 49, 0.06);
   }
+  .recap-section {
+    margin-top: 1.25rem;
+  }
+  .recap-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--brand-dark);
+    margin-bottom: 0.75rem;
+  }
+  .recap-card {
+    border: 1px solid rgba(0, 97, 49, 0.12);
+    border-radius: 0.85rem;
+    box-shadow: 0 4px 16px rgba(0, 60, 30, 0.05);
+    overflow: hidden;
+  }
 </style>
 @endpush
 
@@ -74,7 +89,14 @@
   @php
     $turnamen = $standings['turnamen'] ?? [];
     $sections = $standings['sections'] ?? [];
-    $overall = $standings['overall'] ?? $standings['global_rankings'] ?? [];
+    $recapByBabak = [];
+
+    foreach ($standings['recap'] ?? [] as $recapSection) {
+      $babak = (int) ($recapSection['babak'] ?? 0);
+      if ($babak > 0) {
+        $recapByBabak[$babak] = $recapSection['standings'] ?? [];
+      }
+    }
 
     if (empty($sections) && ! empty($standings['groups'])) {
       $groupsByBabak = [];
@@ -101,11 +123,28 @@
       }
       ksort($groupsByBabak);
       foreach ($groupsByBabak as $babak => $groups) {
+        $recapRows = collect($groups)
+          ->flatMap(fn ($group) => $group['standings'] ?? [])
+          ->sortByDesc(fn ($row) => (int) ($row['poin_babak'] ?? $row['poin_didapat'] ?? 0))
+          ->values()
+          ->map(fn ($row, $index) => array_merge($row, ['rank' => $index + 1]))
+          ->all();
+
         $sections[] = [
           'babak' => $babak,
           'is_active' => false,
           'groups' => $groups,
+          'recap' => $recapRows,
         ];
+      }
+    }
+
+    foreach ($sections as $index => $section) {
+      if (empty($section['recap'])) {
+        $babak = (int) ($section['babak'] ?? 0);
+        if ($babak > 0 && ! empty($recapByBabak[$babak])) {
+          $sections[$index]['recap'] = $recapByBabak[$babak];
+        }
       }
     }
 
@@ -136,7 +175,7 @@
     </div>
   </header>
 
-  @if (empty($sections) && empty($overall))
+  @if (empty($sections))
     <div class="card standings-card">
       <div class="card-body text-center text-secondary py-5">
         <i class="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -144,43 +183,6 @@
       </div>
     </div>
   @else
-    @if (! empty($overall))
-      <div class="card standings-card mb-4">
-        <div class="card-header">
-          <i class="bi bi-trophy me-1"></i>Klasemen Akumulasi
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th style="width: 4rem;">#</th>
-                <th>Pemain</th>
-                <th class="text-center d-none d-md-table-cell">Grup</th>
-                <th class="text-end">Total Poin</th>
-              </tr>
-            </thead>
-            <tbody>
-              @foreach ($overall as $index => $row)
-                @php $rank = $row['rank'] ?? ($index + 1); @endphp
-                <tr class="{{ $rank === 1 ? 'leader-row' : '' }}">
-                  <td>
-                    @if ($rank === 1)
-                      <i class="bi bi-trophy-fill text-warning"></i>
-                    @else
-                      <span class="rank-badge">{{ $rank }}</span>
-                    @endif
-                  </td>
-                  <td class="fw-semibold">{{ $row['nama'] ?? '—' }}</td>
-                  <td class="text-center text-secondary d-none d-md-table-cell">{{ $row['grup_nama'] ?? '—' }}</td>
-                  <td class="text-end fw-semibold">{{ number_format((int) ($row['total_poin'] ?? 0), 0, ',', '.') }}</td>
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
-        </div>
-      </div>
-    @endif
-
     @foreach ($sections as $section)
       <section class="babak-section mb-4">
         <div class="d-flex flex-wrap align-items-center gap-2 babak-title">
@@ -241,6 +243,51 @@
               </div>
             @endforeach
           </div>
+
+          @if (! empty($section['recap']))
+            <div class="recap-section">
+              <h3 class="recap-title">
+                <i class="bi bi-table me-1 text-primary"></i>Rekap Babak {{ $section['babak'] ?? '—' }}
+              </h3>
+              <div class="card recap-card">
+                <div class="table-responsive">
+                  <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                      <tr>
+                        <th style="width: 3.5rem;" class="text-center">#</th>
+                        <th>Pemain</th>
+                        <th class="text-center d-none d-md-table-cell">Grup</th>
+                        <th class="text-center">Poin Babak</th>
+                        <th class="text-center">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach ($section['recap'] as $row)
+                        @php $rank = $row['rank'] ?? 0; @endphp
+                        <tr class="{{ $rank === 1 ? 'leader-row' : '' }}">
+                          <td class="text-center">
+                            @if ($rank === 1)
+                              <i class="bi bi-trophy-fill text-warning"></i>
+                            @else
+                              <span class="rank-badge">{{ $rank }}</span>
+                            @endif
+                          </td>
+                          <td class="fw-semibold">{{ $row['nama'] ?? '—' }}</td>
+                          <td class="text-center text-secondary d-none d-md-table-cell">{{ $row['grup_nama'] ?? '—' }}</td>
+                          <td class="text-center">
+                            <span class="badge text-bg-secondary">{{ number_format((int) ($row['poin_babak'] ?? $row['poin_didapat'] ?? 0), 0, ',', '.') }}</span>
+                          </td>
+                          <td class="text-center">
+                            <span class="badge text-bg-primary">{{ number_format((int) ($row['total_poin'] ?? 0), 0, ',', '.') }}</span>
+                          </td>
+                        </tr>
+                      @endforeach
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          @endif
         @endif
       </section>
     @endforeach

@@ -198,12 +198,14 @@ class BornpadelMahjongTournaments
                         $rank++;
                     }
 
-                    $groupPayload[] = [
-                        'id' => (int) $group->id,
-                        'nama' => $group->nama,
-                        'standings' => $standings,
-                    ];
+                $groupPayload[] = [
+                    'id' => (int) $group->id,
+                    'nama' => $group->nama,
+                    'standings' => $standings,
+                ];
                 }
+
+                $recap = self::buildMahjongBabakRecap($groupPayload);
 
                 $sections[] = [
                     'babak' => $babak,
@@ -211,8 +213,17 @@ class BornpadelMahjongTournaments
                         return (bool) $group->is_aktif;
                     }),
                     'groups' => $groupPayload,
+                    'recap' => $recap,
                 ];
             }
+
+            $recapSections = array_map(static function (array $section) {
+                return [
+                    'babak' => $section['babak'],
+                    'is_active' => $section['is_active'],
+                    'standings' => $section['recap'],
+                ];
+            }, $sections);
 
             return [
                 'data' => [
@@ -225,6 +236,10 @@ class BornpadelMahjongTournaments
                     ],
                     'sections' => $sections,
                     'overall' => self::buildMahjongOverallStandings($connection, $id),
+                    'recap' => $recapSections,
+                    'babak_numbers' => $babakNumbers->map(static function ($babak) {
+                        return (int) $babak;
+                    })->values()->all(),
                 ],
                 'error' => null,
             ];
@@ -348,6 +363,45 @@ class BornpadelMahjongTournaments
         }
 
         return (int) ($previousMember->poin_akumulasi ?? 0);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $groups
+     * @return array<int, array<string, mixed>>
+     */
+    private static function buildMahjongBabakRecap(array $groups): array
+    {
+        $rows = [];
+
+        foreach ($groups as $group) {
+            foreach ($group['standings'] ?? [] as $row) {
+                $rows[] = $row;
+            }
+        }
+
+        usort($rows, static function (array $a, array $b) {
+            $poinA = (int) ($a['poin_babak'] ?? $a['poin_didapat'] ?? 0);
+            $poinB = (int) ($b['poin_babak'] ?? $b['poin_didapat'] ?? 0);
+
+            return $poinB <=> $poinA;
+        });
+
+        $recap = [];
+
+        foreach ($rows as $index => $row) {
+            $recap[] = [
+                'rank' => $index + 1,
+                'id_pemain' => (int) ($row['id_pemain'] ?? 0),
+                'id_peserta' => (int) ($row['id_peserta'] ?? 0),
+                'pemain_ids' => $row['pemain_ids'] ?? [],
+                'nama' => $row['nama'] ?? '—',
+                'grup_nama' => $row['grup_nama'] ?? null,
+                'poin_babak' => (int) ($row['poin_babak'] ?? $row['poin_didapat'] ?? 0),
+                'total_poin' => (int) ($row['total_poin'] ?? 0),
+            ];
+        }
+
+        return $recap;
     }
 
     /**
