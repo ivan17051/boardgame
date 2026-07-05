@@ -57,12 +57,6 @@
     color: var(--brand);
     font-family: ui-monospace, monospace;
   }
-  .syarat-text {
-    color: #6c757d;
-    font-size: 0.9rem;
-    margin: 0;
-    white-space: pre-line;
-  }
 </style>
 @endpush
 
@@ -155,19 +149,11 @@
                 @endif
               </div>
 
-              @if (! empty($item['syarat']))
-                <p class="syarat-text">{{ $item['syarat'] }}</p>
-              @endif
-
-              <div class="mt-auto d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <span class="small text-secondary">
-                  <i class="bi bi-grid-3x3-gap me-1"></i>{{ $item['jenis_label'] ?? 'Mahjong' }}
-                </span>
-                <div class="d-flex flex-wrap gap-2">
+              <div class="mt-auto d-flex flex-column gap-2 w-100">
                   @if ($status === 'open')
                     <a
                       href="{{ route('public.mahjong-tournaments.register', $item['id']) }}"
-                      class="btn btn-sm btn-primary"
+                      class="btn btn-sm btn-primary w-100"
                     >
                       <i class="bi bi-person-plus me-1"></i>Daftar
                     </a>
@@ -175,12 +161,11 @@
                   @if (in_array($status, ['ongoing', 'completed'], true))
                     <a
                       href="{{ route('public.mahjong-tournaments.standings', $item['id']) }}"
-                      class="btn btn-sm btn-outline-primary"
+                      class="btn btn-sm btn-outline-primary w-100"
                     >
                       <i class="bi bi-bar-chart-line me-1"></i>Klasemen
                     </a>
                   @endif
-                </div>
               </div>
             </div>
           </article>

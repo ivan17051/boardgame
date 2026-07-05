@@ -35,6 +35,25 @@
     background: var(--brand-dark);
     border-color: var(--brand-dark);
   }
+  .syarat-box {
+    background: rgba(0, 97, 49, 0.04);
+    border: 1px solid rgba(0, 97, 49, 0.12);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .syarat-box h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--brand-dark);
+    margin: 0 0 0.5rem;
+  }
+  .syarat-box p {
+    color: #6c757d;
+    font-size: 0.9rem;
+    margin: 0;
+    white-space: pre-line;
+  }
 </style>
 @endpush
 
@@ -58,6 +77,13 @@
       Formulir Pendaftaran Pemain
     </div>
     <div class="card-body p-4">
+      @if (! empty($tournament['syarat']))
+        <div class="syarat-box">
+          <h2><i class="bi bi-info-circle me-1"></i>Syarat &amp; Ketentuan</h2>
+          <p>{{ $tournament['syarat'] }}</p>
+        </div>
+      @endif
+
       @if ($errors->has('form'))
         <div class="alert alert-danger">{{ $errors->first('form') }}</div>
       @endif
