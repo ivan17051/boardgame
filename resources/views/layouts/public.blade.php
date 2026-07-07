@@ -45,10 +45,55 @@
       max-width: 9.5rem;
       flex: 0 0 auto;
     }
+    .page-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: rgba(240, 247, 243, 0.82);
+      backdrop-filter: blur(6px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+    .page-loader.is-active {
+      opacity: 1;
+      visibility: visible;
+    }
+    .page-loader__spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 0.3rem solid rgba(0, 97, 49, 0.18);
+      border-top-color: var(--brand);
+      border-radius: 50%;
+      animation: pageLoaderSpin 0.7s linear infinite;
+    }
+    .page-loader__text {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--brand-dark);
+      letter-spacing: 0.02em;
+    }
+    @keyframes pageLoaderSpin {
+      to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .page-loader { transition: none; }
+      .page-loader__spinner { animation-duration: 1.4s; }
+    }
   </style>
   @stack('styles')
 </head>
 <body>
+  <div class="page-loader" id="pageLoader" role="status" aria-live="polite" aria-hidden="true">
+    <div class="page-loader__spinner"></div>
+    <span class="page-loader__text">Memuat...</span>
+  </div>
+
   <nav class="public-navbar sticky-top">
     <div class="container-fluid px-3 px-md-4">
       <div class="d-flex align-items-center justify-content-between py-2">
@@ -71,6 +116,59 @@
   <div class="page-shell">
     @yield('content')
   </div>
+
+  <script>
+    (function () {
+      const loader = document.getElementById('pageLoader');
+      if (!loader) return;
+
+      let hideTimer = null;
+
+      const show = () => {
+        window.clearTimeout(hideTimer);
+        loader.classList.add('is-active');
+        loader.setAttribute('aria-hidden', 'false');
+      };
+
+      const hide = () => {
+        loader.classList.remove('is-active');
+        loader.setAttribute('aria-hidden', 'true');
+      };
+
+      const isModifiedClick = (event) =>
+        event.defaultPrevented || event.button !== 0 ||
+        event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+
+      document.addEventListener('click', (event) => {
+        const link = event.target.closest('a');
+        if (!link || isModifiedClick(event)) return;
+
+        const href = link.getAttribute('href');
+        if (!href || href.startsWith('#') || link.hasAttribute('download')) return;
+        if (link.dataset.noLoading !== undefined) return;
+        if (/^(javascript:|mailto:|tel:)/i.test(href)) return;
+        if (link.target && link.target !== '_self') return;
+
+        const url = new URL(link.href, window.location.href);
+        if (url.origin !== window.location.origin) return;
+        if (url.pathname === window.location.pathname && url.hash) return;
+
+        show();
+      });
+
+      document.addEventListener('submit', (event) => {
+        const form = event.target;
+        if (event.defaultPrevented) return;
+        if (form.dataset.noLoading !== undefined) return;
+        if ((form.getAttribute('target') || '_self') !== '_self') return;
+        show();
+      });
+
+      window.addEventListener('pageshow', hide);
+      window.addEventListener('pagehide', hide);
+    })();
+  </script>
+
   @stack('scripts')
 </body>
 </html>

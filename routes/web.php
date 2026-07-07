@@ -65,6 +65,9 @@ Route::post('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController:
 Route::get('/turnamen/mahjong/{id}/klasemen', [PublicMahjongTournamentController::class, 'standings'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.standings');
+Route::get('/turnamen/mahjong/{id}/juara', [PublicMahjongTournamentController::class, 'winners'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.winners');
 
 Route::prefix('guest')->name('guest.')->group(function () {
     Route::get('/sewa', function () {

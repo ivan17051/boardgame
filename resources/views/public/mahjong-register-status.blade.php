@@ -48,6 +48,14 @@
     margin-top: 1.25rem;
     padding-top: 1.25rem;
   }
+  .player-foto {
+    width: 110px;
+    height: 110px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 6px 20px rgba(0, 60, 30, 0.12);
+  }
 </style>
 @endpush
 
@@ -80,6 +88,12 @@
           Nomor HP <strong>{{ $check['no_hp'] ?? '—' }}</strong> sudah terdaftar di turnamen ini.
         @endif
       </div>
+
+      @if (! empty($check['foto_url']))
+        <div class="text-center mb-4">
+          <img src="{{ $check['foto_url'] }}" alt="Foto {{ $check['nama'] ?? 'pemain' }}" class="player-foto" />
+        </div>
+      @endif
 
       <dl class="row status-list mb-0">
         <dt class="col-sm-4">Nama</dt>

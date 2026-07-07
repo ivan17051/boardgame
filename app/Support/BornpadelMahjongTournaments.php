@@ -171,50 +171,17 @@ class BornpadelMahjongTournaments
             foreach ($babakNumbers as $babak) {
                 $babak = (int) $babak;
                 $groups = self::resolveMahjongGrupBatchForBabak($connection, $id, $babak);
-                $groupPayload = [];
-
-                foreach ($groups as $group) {
-                    $members = self::orderedGroupMembers($connection, $group->id);
-                    $standings = [];
-                    $rank = 1;
-
-                    foreach ($members as $member) {
-                        $poinBabak = self::resolveMahjongBabakPoints($connection, $member, $babak, $id, (bool) $group->is_aktif);
-                        $totalPoin = self::resolveMahjongTotalPoints($member, $poinBabak, (bool) $group->is_aktif);
-                        $nama = self::resolveMemberDisplayName($connection, $member);
-
-                        $standings[] = [
-                            'rank' => $rank,
-                            'id_pemain' => (int) $member->id_pemain,
-                            'id_peserta' => (int) $member->id_turnamen_peserta,
-                            'pemain_ids' => self::resolveStandingPemainIds($connection, $member),
-                            'nama' => $nama,
-                            'grup_nama' => $group->nama,
-                            'poin_akumulasi' => (int) ($member->poin_akumulasi ?? 0),
-                            'poin_didapat' => $poinBabak,
-                            'poin_babak' => $poinBabak,
-                            'total_poin' => $totalPoin,
-                        ];
-
-                        $rank++;
-                    }
-
-                $groupPayload[] = [
-                    'id' => (int) $group->id,
-                    'nama' => $group->nama,
-                    'standings' => $standings,
-                ];
-                }
-
-                $recap = self::buildMahjongBabakRecap($groupPayload);
+                $table = self::buildMahjongBabakTableFromDb($connection, $id, $babak);
 
                 $sections[] = [
                     'babak' => $babak,
                     'is_active' => $groups->contains(function ($group) {
                         return (bool) $group->is_aktif;
                     }),
-                    'groups' => $groupPayload,
-                    'recap' => $recap,
+                    'rounds' => $table['rounds'],
+                    'rows' => $table['rows'],
+                    'groups' => [],
+                    'recap' => $table['rows'],
                 ];
             }
 
@@ -222,6 +189,7 @@ class BornpadelMahjongTournaments
                 return [
                     'babak' => $section['babak'],
                     'is_active' => $section['is_active'],
+                    'rounds' => $section['rounds'],
                     'standings' => $section['recap'],
                 ];
             }, $sections);
@@ -285,6 +253,195 @@ class BornpadelMahjongTournaments
             ->where('created_at', $latestCreatedAt)
             ->orderBy('nama')
             ->get();
+    }
+
+    /**
+     * @return array{rounds: array<int, array<string, mixed>>, rows: array<int, array<string, mixed>>}
+     */
+    private static function buildMahjongBabakTableFromDb($connection, int $turnamenId, int $babak): array
+    {
+        $roundBatches = self::getMahjongRoundBatchesForBabak($connection, $turnamenId, $babak);
+
+        if ($roundBatches === []) {
+            return ['rounds' => [], 'rows' => []];
+        }
+
+        $rounds = [];
+        foreach ($roundBatches as $index => $batch) {
+            $rounds[] = [
+                'round' => $index + 1,
+                'label' => 'Ronde '.($index + 1),
+            ];
+        }
+
+        $pesertaIds = [];
+        foreach ($roundBatches as $batch) {
+            foreach ($batch as $grup) {
+                foreach ($grup->members as $member) {
+                    if (! empty($member->id_turnamen_peserta)) {
+                        $pesertaIds[(int) $member->id_turnamen_peserta] = true;
+                    }
+                }
+            }
+        }
+        $pesertaIds = array_keys($pesertaIds);
+
+        $rows = [];
+
+        foreach ($pesertaIds as $pesertaId) {
+            $roundScores = [];
+            $latestMember = null;
+
+            foreach ($roundBatches as $roundIndex => $batch) {
+                $member = self::findMahjongMemberInBatch($batch, $pesertaId);
+
+                if ($member) {
+                    $latestMember = $member;
+                    $roundScores[] = self::resolveMahjongRoundPoints(
+                        $connection,
+                        $member,
+                        $roundBatches,
+                        (int) $roundIndex,
+                        $babak,
+                        $turnamenId
+                    );
+                } else {
+                    $roundScores[] = 0;
+                }
+            }
+
+            if ($latestMember === null) {
+                continue;
+            }
+
+            $totalBabak = array_sum($roundScores);
+
+            $rows[] = [
+                'id_pemain' => (int) ($latestMember->id_pemain ?? 0),
+                'id_peserta' => (int) ($latestMember->id_turnamen_peserta ?? 0),
+                'pemain_ids' => self::resolveStandingPemainIds($connection, $latestMember),
+                'nama' => self::resolveMemberDisplayName($connection, $latestMember),
+                'round_scores' => $roundScores,
+                'total_babak' => $totalBabak,
+                'poin_babak' => $totalBabak,
+                'total_poin' => self::resolveMahjongTotalPoints(
+                    $latestMember,
+                    $totalBabak,
+                    (bool) ($latestMember->_grup_is_aktif ?? false)
+                ),
+            ];
+        }
+
+        usort($rows, static function (array $a, array $b) {
+            return ($b['total_babak'] ?? 0) <=> ($a['total_babak'] ?? 0);
+        });
+
+        foreach ($rows as $index => &$row) {
+            $row['rank'] = $index + 1;
+        }
+        unset($row);
+
+        return ['rounds' => $rounds, 'rows' => $rows];
+    }
+
+    /**
+     * Group grups of a babak into round batches (by the `ronde` column), each
+     * batch carrying its members with the parent grup's active flag attached.
+     *
+     * @return array<int, array<int, object>>
+     */
+    private static function getMahjongRoundBatchesForBabak($connection, int $turnamenId, int $babak): array
+    {
+        $grups = $connection->table('grup')
+            ->where('id_turnamen', $turnamenId)
+            ->where('babak', $babak)
+            ->orderBy('ronde')
+            ->orderBy('id')
+            ->get();
+
+        $byRonde = [];
+
+        foreach ($grups as $grup) {
+            $ronde = (int) ($grup->ronde ?? 0);
+            if ($ronde <= 0) {
+                $ronde = 1;
+            }
+
+            $members = self::orderedGroupMembers($connection, $grup->id)->all();
+            foreach ($members as $member) {
+                $member->_grup_is_aktif = (bool) $grup->is_aktif;
+            }
+
+            $grup->members = $members;
+            $byRonde[$ronde][] = $grup;
+        }
+
+        ksort($byRonde);
+
+        return array_values($byRonde);
+    }
+
+    /**
+     * @param  array<int, object>  $batch
+     * @return object|null
+     */
+    private static function findMahjongMemberInBatch(array $batch, int $pesertaId)
+    {
+        foreach ($batch as $grup) {
+            foreach ($grup->members as $member) {
+                if ((int) ($member->id_turnamen_peserta ?? 0) === $pesertaId) {
+                    return $member;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  object  $member
+     * @param  array<int, array<int, object>>  $roundBatches
+     */
+    private static function resolveMahjongRoundPoints($connection, $member, array $roundBatches, int $roundIndex, int $babak, int $turnamenId): int
+    {
+        if (! empty($member->_grup_is_aktif)) {
+            return (int) ($member->poin_didapat ?? 0);
+        }
+
+        if ((int) ($member->poin_didapat ?? 0) !== 0) {
+            return (int) $member->poin_didapat;
+        }
+
+        $startTotal = self::resolveMahjongRoundStartTotal(
+            $connection,
+            (int) ($member->id_turnamen_peserta ?? 0),
+            $roundBatches,
+            $roundIndex,
+            $babak,
+            $turnamenId
+        );
+
+        return (int) ($member->poin_akumulasi ?? 0) - $startTotal;
+    }
+
+    /**
+     * @param  array<int, array<int, object>>  $roundBatches
+     */
+    private static function resolveMahjongRoundStartTotal($connection, int $pesertaId, array $roundBatches, int $roundIndex, int $babak, int $turnamenId): int
+    {
+        if ($roundIndex > 0 && $pesertaId > 0) {
+            $prevBatch = $roundBatches[$roundIndex - 1] ?? null;
+
+            if ($prevBatch) {
+                $prevMember = self::findMahjongMemberInBatch($prevBatch, $pesertaId);
+
+                if ($prevMember) {
+                    return (int) ($prevMember->poin_akumulasi ?? 0);
+                }
+            }
+        }
+
+        return self::getMahjongCarryPointsBeforeBabak($connection, $pesertaId, $babak, $turnamenId);
     }
 
     /**
@@ -564,16 +721,16 @@ class BornpadelMahjongTournaments
      * @param  array<string, mixed>  $payload
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
      */
-    public static function registerPlayer(array $payload): array
+    public static function registerPlayer(array $payload, ?UploadedFile $foto = null): array
     {
-        $fromDatabase = self::registerPlayerFromDatabase($payload);
+        $fromDatabase = self::registerPlayerFromDatabase($payload, $foto);
 
         if ($fromDatabase['error'] === null) {
             return self::publicRegisterResult($fromDatabase);
         }
 
         if (! empty($fromDatabase['retry_via_api'])) {
-            return self::registerPlayerFromApi($payload);
+            return self::registerPlayerFromApi($payload, $foto);
         }
 
         return self::publicRegisterResult($fromDatabase);
@@ -659,6 +816,8 @@ class BornpadelMahjongTournaments
                         'id' => (int) $pemain->id,
                         'nama' => $pemain->nama,
                         'gender' => $pemain->gender,
+                        'foto' => $pemain->foto ?? null,
+                        'foto_url' => self::pemainPhotoUrl($pemain->foto ?? null),
                     ],
                     'registration' => $peserta ? [
                         'peserta_id' => (int) $peserta->id,
@@ -962,6 +1121,27 @@ class BornpadelMahjongTournaments
 
     public static function paymentReceiptUrl(?string $relativePath): ?string
     {
+        return self::bornpadelPublicUrl($relativePath);
+    }
+
+    public static function pemainPhotoUrl(?string $relativePath): ?string
+    {
+        return self::bornpadelPublicUrl($relativePath);
+    }
+
+    public static function pemainPhotoPlaceholderUrl(): ?string
+    {
+        $baseUrl = rtrim((string) config('services.bornpadel.public_url'), '/');
+
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        return $baseUrl.'/public/img/pemain-placeholder.svg';
+    }
+
+    private static function bornpadelPublicUrl(?string $relativePath): ?string
+    {
         if (! $relativePath) {
             return null;
         }
@@ -983,6 +1163,28 @@ class BornpadelMahjongTournaments
         return $baseUrl.'/public/'.$normalized;
     }
 
+    private static function storePemainPhotoFile(UploadedFile $file): string
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+        $allowed = ['jpg', 'jpeg', 'png', 'webp'];
+
+        if (! in_array($extension, $allowed, true)) {
+            throw new \RuntimeException('Foto harus berformat JPG, PNG, atau WebP.');
+        }
+
+        $filename = uniqid('pemain_', true).'.'.$extension;
+        $relativePath = 'img/pemain/'.$filename;
+        $directory = self::bornpadelPublicPath().'/'.dirname($relativePath);
+
+        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
+            throw new \RuntimeException('Gagal menyiapkan folder foto pemain.');
+        }
+
+        $file->move($directory, $filename);
+
+        return $relativePath;
+    }
+
     public static function canUploadPaymentReceipt(?string $status, ?string $buktiBayarUrl): bool
     {
         if ($buktiBayarUrl) {
@@ -996,7 +1198,7 @@ class BornpadelMahjongTournaments
      * @param  array<string, mixed>  $payload
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null, retry_via_api?: bool}
      */
-    private static function registerPlayerFromDatabase(array $payload): array
+    private static function registerPlayerFromDatabase(array $payload, ?UploadedFile $foto = null): array
     {
         $fail = static function (string $message, bool $retryViaApi = false): array {
             return [
@@ -1082,6 +1284,15 @@ class BornpadelMahjongTournaments
                 }
             }
 
+            $fotoPath = null;
+            if ($foto !== null) {
+                try {
+                    $fotoPath = self::storePemainPhotoFile($foto);
+                } catch (Throwable $e) {
+                    return $fail($e->getMessage());
+                }
+            }
+
             $now = now();
 
             $result = $connection->transaction(function () use (
@@ -1093,6 +1304,7 @@ class BornpadelMahjongTournaments
                 $rating,
                 $tglLahir,
                 $usia,
+                $fotoPath,
                 $turnamenId,
                 $now
             ) {
@@ -1105,6 +1317,10 @@ class BornpadelMahjongTournaments
                     'usia' => $usia,
                     'updated_at' => $now,
                 ];
+
+                if ($fotoPath !== null) {
+                    $pemainData['foto'] = $fotoPath;
+                }
 
                 if ($existingPemain !== null) {
                     $connection->table('m_pemain')
@@ -1139,6 +1355,7 @@ class BornpadelMahjongTournaments
                     'turnamen_id' => $turnamenId,
                     'pemain_id' => $result['pemain_id'],
                     'peserta_id' => $result['peserta_id'],
+                    'foto_url' => self::pemainPhotoUrl($fotoPath),
                 ],
                 'message' => 'Pemain berhasil didaftarkan.',
                 'error' => null,
@@ -1152,7 +1369,7 @@ class BornpadelMahjongTournaments
      * @param  array<string, mixed>  $payload
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
      */
-    private static function registerPlayerFromApi(array $payload): array
+    private static function registerPlayerFromApi(array $payload, ?UploadedFile $foto = null): array
     {
         $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
         $token = config('services.bornpadel.api_token');
@@ -1166,10 +1383,19 @@ class BornpadelMahjongTournaments
         }
 
         try {
-            $response = Http::timeout(15)
+            $request = Http::timeout(15)
                 ->acceptJson()
-                ->withToken($token)
-                ->post($apiUrl.'/register-player', $payload);
+                ->withToken($token);
+
+            if ($foto !== null) {
+                $request = $request->attach(
+                    'foto',
+                    file_get_contents($foto->getRealPath()),
+                    $foto->getClientOriginalName()
+                );
+            }
+
+            $response = $request->post($apiUrl.'/register-player', $payload);
 
             if ($response->successful() && $response->json('success') === true) {
                 return [
@@ -1258,6 +1484,138 @@ class BornpadelMahjongTournaments
             return [
                 'data' => null,
                 'error' => $response->json('message') ?? 'Gagal memuat klasemen turnamen.',
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'error' => 'Tidak dapat terhubung ke server turnamen.',
+            ];
+        }
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    public static function fetchWinners(int $id): array
+    {
+        $fromDatabase = self::fetchWinnersFromDatabase($id);
+        if ($fromDatabase['error'] === null) {
+            return $fromDatabase;
+        }
+
+        return self::fetchWinnersFromApi($id);
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function fetchWinnersFromDatabase(int $id): array
+    {
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_pemenang')
+                || ! Schema::connection('bornpadel')->hasTable('m_pemain')) {
+                return [
+                    'data' => null,
+                    'error' => 'Database Bornpadel belum memiliki tabel juara.',
+                ];
+            }
+
+            $turnamen = $connection->table('m_turnamen')
+                ->where('id', $id)
+                ->where('jenis', 'mahjong')
+                ->first();
+
+            if (! $turnamen) {
+                return [
+                    'data' => null,
+                    'error' => 'Turnamen tidak ditemukan.',
+                ];
+            }
+
+            $winners = $connection->table('turnamen_pemenang')
+                ->leftJoin('m_pemain', 'm_pemain.id', '=', 'turnamen_pemenang.id_pemain')
+                ->where('turnamen_pemenang.id_turnamen', $id)
+                ->orderBy('turnamen_pemenang.peringkat')
+                ->get([
+                    'turnamen_pemenang.peringkat',
+                    'turnamen_pemenang.id_pemain',
+                    'turnamen_pemenang.total_poin',
+                    'm_pemain.nama',
+                    'm_pemain.foto',
+                ])
+                ->map(function ($row) {
+                    return [
+                        'peringkat' => (int) $row->peringkat,
+                        'label' => 'Juara '.$row->peringkat,
+                        'id_pemain' => (int) $row->id_pemain,
+                        'nama' => $row->nama,
+                        'foto_url' => self::pemainPhotoUrl($row->foto ?? null),
+                        'total_poin' => (int) $row->total_poin,
+                    ];
+                })
+                ->all();
+
+            if ($winners === []) {
+                return [
+                    'data' => null,
+                    'error' => 'Data juara belum tersedia.',
+                ];
+            }
+
+            return [
+                'data' => [
+                    'turnamen' => [
+                        'id' => (int) $turnamen->id,
+                        'nama' => $turnamen->nama,
+                        'jenis' => $turnamen->jenis ?? 'mahjong',
+                        'status' => $turnamen->status ?? null,
+                    ],
+                    'winners' => $winners,
+                ],
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'error' => 'Database Bornpadel: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function fetchWinnersFromApi(int $id): array
+    {
+        $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
+        $token = config('services.bornpadel.api_token');
+
+        if (! $token || $apiUrl === '') {
+            return [
+                'data' => null,
+                'error' => 'Token atau URL API Bornpadel belum dikonfigurasi.',
+            ];
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->acceptJson()
+                ->withToken($token)
+                ->get($apiUrl.'/tournaments/'.$id.'/winners');
+
+            if ($response->successful() && $response->json('success') === true) {
+                return [
+                    'data' => $response->json('data'),
+                    'error' => null,
+                ];
+            }
+
+            return [
+                'data' => null,
+                'error' => $response->json('message') ?? 'Gagal memuat data juara turnamen.',
             ];
         } catch (Throwable $e) {
             return [

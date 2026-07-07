@@ -54,6 +54,18 @@
     margin: 0;
     white-space: pre-line;
   }
+  .foto-preview {
+    display: none;
+    margin-top: 0.75rem;
+  }
+  .foto-preview img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0, 97, 49, 0.15);
+    box-shadow: 0 4px 14px rgba(0, 60, 30, 0.08);
+  }
 </style>
 @endpush
 
@@ -94,7 +106,12 @@
         <div class="alert alert-danger">{{ $errors->first('form') }}</div>
       @endif
 
-      <form method="post" action="{{ route('public.mahjong-tournaments.register.store', $tournament['id']) }}" novalidate>
+      <form
+        method="post"
+        action="{{ route('public.mahjong-tournaments.register.store', $tournament['id']) }}"
+        enctype="multipart/form-data"
+        novalidate
+      >
         @csrf
         <input type="hidden" name="id_turnamen" value="{{ $tournament['id'] }}" />
         <input type="hidden" name="no_hp" value="{{ $prefillNoHp }}" />
@@ -155,6 +172,26 @@
           @enderror
         </div>
 
+        <div class="mb-4">
+          <label for="foto" class="form-label fw-semibold">
+            Foto <span class="text-muted fw-normal">(opsional)</span>
+          </label>
+          <input
+            type="file"
+            name="foto"
+            id="foto"
+            class="form-control @error('foto') is-invalid @enderror"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+          />
+          <div class="form-text">Format JPG, PNG, atau WebP. Maks. 5 MB.</div>
+          @error('foto')
+            <div class="invalid-feedback">{{ $message }}</div>
+          @enderror
+          <div class="foto-preview" id="fotoPreview">
+            <img src="" alt="Pratinjau foto" id="fotoPreviewImg" />
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary btn-submit w-100">
           <i class="bi bi-send me-1"></i>Kirim Pendaftaran
         </button>
@@ -162,3 +199,30 @@
     </div>
   </div>
 @endsection
+
+@push('scripts')
+<script>
+  (function () {
+    const input = document.getElementById('foto');
+    const preview = document.getElementById('fotoPreview');
+    const previewImg = document.getElementById('fotoPreviewImg');
+    if (!input || !preview || !previewImg) return;
+
+    input.addEventListener('change', () => {
+      const file = input.files && input.files[0];
+      if (!file || !file.type.startsWith('image/')) {
+        preview.style.display = 'none';
+        previewImg.src = '';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        preview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    });
+  })();
+</script>
+@endpush

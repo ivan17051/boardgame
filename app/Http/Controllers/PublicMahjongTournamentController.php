@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\PhoneNumberService;
 use App\Support\BornpadelMahjongTournaments;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -46,6 +47,26 @@ class PublicMahjongTournamentController extends Controller
 
         return view('public.mahjong-standings', [
             'standings' => $data,
+        ]);
+    }
+
+    public function winners(int $id): JsonResponse
+    {
+        $result = BornpadelMahjongTournaments::fetchWinners($id);
+
+        if ($result['error'] !== null || $result['data'] === null) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['error'] ?? 'Data juara tidak ditemukan.',
+            ], 404);
+        }
+
+        $data = $result['data'];
+        $data['placeholder_url'] = BornpadelMahjongTournaments::pemainPhotoPlaceholderUrl();
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
         ]);
     }
 
@@ -97,6 +118,7 @@ class PublicMahjongTournamentController extends Controller
             'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
             'nama' => $pemain['nama'] ?? null,
             'gender' => $pemain['gender'] ?? null,
+            'foto_url' => $pemain['foto_url'] ?? null,
             'registration_status' => $registration['status'] ?? null,
             'peserta_id' => $registration['peserta_id'] ?? null,
             'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
@@ -241,6 +263,7 @@ class PublicMahjongTournamentController extends Controller
             'no_hp' => ['required', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'],
             'gender' => ['required', 'in:male,female'],
             'tgl_lahir' => ['nullable', 'date', 'before:today'],
+            'foto' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
         ], [
             'nama.required' => 'Nama lengkap wajib diisi.',
             'no_hp.required' => 'Nomor HP wajib diisi.',
@@ -249,6 +272,9 @@ class PublicMahjongTournamentController extends Controller
             'gender.in' => 'Jenis kelamin tidak valid.',
             'tgl_lahir.date' => 'Tanggal lahir tidak valid.',
             'tgl_lahir.before' => 'Tanggal lahir harus sebelum hari ini.',
+            'foto.image' => 'Foto harus berupa gambar.',
+            'foto.mimes' => 'Foto harus berformat JPG, PNG, atau WebP.',
+            'foto.max' => 'Ukuran foto maksimal 5 MB.',
         ]);
 
         $noHp = $this->normalizedPhone($request, $validated['no_hp']);
@@ -267,7 +293,7 @@ class PublicMahjongTournamentController extends Controller
             'tgl_lahir' => $validated['tgl_lahir'] ?? null,
             'rating' => 0,
             'status' => 'pending',
-        ]);
+        ], $request->file('foto'));
 
         if ($result['error'] !== null) {
             return back()
@@ -287,6 +313,7 @@ class PublicMahjongTournamentController extends Controller
             'pemain_exists' => true,
             'nama' => $pemain['nama'] ?? $validated['nama'],
             'gender' => $pemain['gender'] ?? $validated['gender'],
+            'foto_url' => $pemain['foto_url'] ?? $registerData['foto_url'] ?? null,
             'registration_status' => $registration['status'] ?? $registerData['status'] ?? 'pending',
             'peserta_id' => $registration['peserta_id'] ?? $registerData['peserta_id'] ?? null,
             'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
@@ -373,6 +400,7 @@ class PublicMahjongTournamentController extends Controller
             'pemain_exists' => (bool) ($data['pemain_exists'] ?? $session['pemain_exists'] ?? false),
             'nama' => $pemain['nama'] ?? $session['nama'] ?? null,
             'gender' => $pemain['gender'] ?? $session['gender'] ?? null,
+            'foto_url' => $pemain['foto_url'] ?? $session['foto_url'] ?? null,
             'registration_status' => $registration['status'] ?? $session['registration_status'] ?? null,
             'peserta_id' => $registration['peserta_id'] ?? $session['peserta_id'] ?? null,
             'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? $session['bukti_bayar_url'] ?? null,
