@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Carbon\Carbon;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -576,6 +577,419 @@ class BornpadelMahjongTournaments
         }
 
         return self::publicRegisterResult($fromDatabase);
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    public static function checkRegistration(int $turnamenId, string $noHp): array
+    {
+        $fromDatabase = self::checkRegistrationFromDatabase($turnamenId, $noHp);
+
+        if ($fromDatabase['error'] === null) {
+            return $fromDatabase;
+        }
+
+        if (! empty($fromDatabase['retry_via_api'])) {
+            return self::checkRegistrationFromApi($turnamenId, $noHp);
+        }
+
+        return $fromDatabase;
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null, retry_via_api?: bool}
+     */
+    private static function checkRegistrationFromDatabase(int $turnamenId, string $noHp): array
+    {
+        $fail = static function (string $message, bool $retryViaApi = false): array {
+            return [
+                'data' => null,
+                'error' => $message,
+                'retry_via_api' => $retryViaApi,
+            ];
+        };
+
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasTable('m_pemain')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_peserta')) {
+                return $fail('Database Bornpadel belum memiliki tabel pendaftaran.', true);
+            }
+
+            $turnamen = $connection->table('m_turnamen')->where('id', $turnamenId)->first();
+
+            if (! $turnamen) {
+                return $fail('Turnamen tidak ditemukan.', true);
+            }
+
+            $pemain = $connection->table('m_pemain')->where('no_hp', $noHp)->first();
+
+            if (! $pemain) {
+                return [
+                    'data' => [
+                        'registered' => false,
+                        'turnamen_id' => $turnamenId,
+                        'no_hp' => $noHp,
+                        'pemain_exists' => false,
+                        'pemain' => null,
+                        'registration' => null,
+                    ],
+                    'error' => null,
+                ];
+            }
+
+            $peserta = $connection->table('turnamen_peserta')
+                ->where('id_turnamen', $turnamenId)
+                ->where(function ($query) use ($pemain) {
+                    $query->where('id_pemain1', $pemain->id)
+                        ->orWhere('id_pemain2', $pemain->id);
+                })
+                ->first();
+
+            return [
+                'data' => [
+                    'registered' => $peserta !== null,
+                    'turnamen_id' => $turnamenId,
+                    'no_hp' => $pemain->no_hp,
+                    'pemain_exists' => true,
+                    'pemain' => [
+                        'id' => (int) $pemain->id,
+                        'nama' => $pemain->nama,
+                        'gender' => $pemain->gender,
+                    ],
+                    'registration' => $peserta ? [
+                        'peserta_id' => (int) $peserta->id,
+                        'status' => $peserta->status,
+                        'bukti_bayar' => $peserta->bukti_bayar ?? null,
+                        'bukti_bayar_url' => self::paymentReceiptUrl($peserta->bukti_bayar ?? null),
+                        'paired_at' => $peserta->paired_at ?? null,
+                    ] : null,
+                ],
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return $fail('Database Bornpadel: '.$e->getMessage(), true);
+        }
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function checkRegistrationFromApi(int $turnamenId, string $noHp): array
+    {
+        $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
+        $token = config('services.bornpadel.api_token');
+
+        if (! $token || $apiUrl === '') {
+            return [
+                'data' => null,
+                'error' => 'Token atau URL API Bornpadel belum dikonfigurasi.',
+            ];
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->acceptJson()
+                ->withToken($token)
+                ->get($apiUrl.'/registration-check', [
+                    'id_turnamen' => $turnamenId,
+                    'no_hp' => $noHp,
+                ]);
+
+            if ($response->successful() && $response->json('success') === true) {
+                return [
+                    'data' => $response->json('data'),
+                    'error' => null,
+                ];
+            }
+
+            return [
+                'data' => null,
+                'error' => $response->json('message') ?? 'Gagal memeriksa status pendaftaran.',
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'error' => 'Tidak dapat terhubung ke server turnamen.',
+            ];
+        }
+    }
+
+    public static function registrationStatusLabel(?string $status): string
+    {
+        switch ($status) {
+            case 'unpaid':
+                return 'Belum bayar';
+            case 'pending':
+                return 'Menunggu verifikasi';
+            case 'paid':
+                return 'Sudah bayar';
+            case 'approved':
+                return 'Disetujui';
+            case 'rejected':
+                return 'Ditolak';
+            default:
+                return $status ? ucfirst(str_replace('_', ' ', $status)) : '—';
+        }
+    }
+
+    public static function genderLabel(?string $gender): string
+    {
+        switch ($gender) {
+            case 'male':
+                return 'Laki-laki';
+            case 'female':
+                return 'Perempuan';
+            default:
+                return $gender ?: '—';
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    public static function uploadPaymentReceipt(array $payload, UploadedFile $file): array
+    {
+        $fromDatabase = self::uploadPaymentReceiptFromDatabase($payload, $file);
+
+        if ($fromDatabase['error'] === null) {
+            return $fromDatabase;
+        }
+
+        if (! empty($fromDatabase['retry_via_api'])) {
+            return self::uploadPaymentReceiptFromApi($payload, $file);
+        }
+
+        return $fromDatabase;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null, retry_via_api?: bool}
+     */
+    private static function uploadPaymentReceiptFromDatabase(array $payload, UploadedFile $file): array
+    {
+        $fail = static function (string $message, bool $retryViaApi = false): array {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => $message,
+                'retry_via_api' => $retryViaApi,
+            ];
+        };
+
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('turnamen_peserta')) {
+                return $fail('Database Bornpadel belum memiliki tabel pendaftaran.', true);
+            }
+
+            $peserta = self::resolvePesertaFromDatabase($connection, $payload);
+
+            if (! $peserta) {
+                return $fail('Pendaftaran turnamen tidak ditemukan.', true);
+            }
+
+            $storedPath = self::storePaymentReceiptFile($file);
+            $updates = [
+                'bukti_bayar' => $storedPath,
+                'updated_at' => now(),
+            ];
+
+            if (in_array($peserta->status, ['unpaid', 'pending'], true)) {
+                $updates['status'] = 'paid';
+            }
+
+            $connection->table('turnamen_peserta')
+                ->where('id', $peserta->id)
+                ->update($updates);
+
+            $status = $updates['status'] ?? $peserta->status;
+
+            return [
+                'data' => [
+                    'peserta_id' => (int) $peserta->id,
+                    'turnamen_id' => (int) $peserta->id_turnamen,
+                    'status' => $status,
+                    'bukti_bayar' => $storedPath,
+                    'bukti_bayar_url' => self::paymentReceiptUrl($storedPath),
+                ],
+                'message' => 'Bukti bayar berhasil diunggah.',
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return $fail('Database Bornpadel: '.$e->getMessage(), true);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    private static function uploadPaymentReceiptFromApi(array $payload, UploadedFile $file): array
+    {
+        $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
+        $token = config('services.bornpadel.api_token');
+
+        if (! $token || $apiUrl === '') {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => 'Token atau URL API Bornpadel belum dikonfigurasi.',
+            ];
+        }
+
+        try {
+            $requestPayload = array_filter([
+                'id_turnamen' => $payload['id_turnamen'] ?? null,
+                'no_hp' => $payload['no_hp'] ?? null,
+                'peserta_id' => $payload['peserta_id'] ?? null,
+            ], static function ($value) {
+                return $value !== null && $value !== '';
+            });
+
+            $response = Http::timeout(30)
+                ->acceptJson()
+                ->withToken($token)
+                ->attach(
+                    'bukti_bayar',
+                    file_get_contents($file->getRealPath()),
+                    $file->getClientOriginalName()
+                )
+                ->post($apiUrl.'/payment-receipt', $requestPayload);
+
+            if ($response->successful() && $response->json('success') === true) {
+                return [
+                    'data' => $response->json('data'),
+                    'message' => $response->json('message') ?? 'Bukti bayar berhasil diunggah.',
+                    'error' => null,
+                ];
+            }
+
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => self::formatApiErrorMessage($response),
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => 'Tidak dapat terhubung ke server turnamen.',
+            ];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return object|null
+     */
+    private static function resolvePesertaFromDatabase($connection, array $payload)
+    {
+        if (! empty($payload['peserta_id'])) {
+            return $connection->table('turnamen_peserta')
+                ->where('id', (int) $payload['peserta_id'])
+                ->first();
+        }
+
+        $turnamenId = (int) ($payload['id_turnamen'] ?? 0);
+        $noHp = trim((string) ($payload['no_hp'] ?? ''));
+
+        if ($turnamenId <= 0 || $noHp === '') {
+            return null;
+        }
+
+        if (! Schema::connection('bornpadel')->hasTable('m_pemain')) {
+            return null;
+        }
+
+        $pemain = $connection->table('m_pemain')->where('no_hp', $noHp)->first();
+
+        if (! $pemain) {
+            return null;
+        }
+
+        return $connection->table('turnamen_peserta')
+            ->where('id_turnamen', $turnamenId)
+            ->where(function ($query) use ($pemain) {
+                $query->where('id_pemain1', $pemain->id)
+                    ->orWhere('id_pemain2', $pemain->id);
+            })
+            ->first();
+    }
+
+    private static function storePaymentReceiptFile(UploadedFile $file): string
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+        $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
+
+        if (! in_array($extension, $allowed, true)) {
+            throw new \RuntimeException('Bukti bayar harus berformat JPG, PNG, WebP, atau PDF.');
+        }
+
+        $filename = uniqid('bayar_', true).'.'.$extension;
+        $relativePath = 'img/bukti-bayar/'.$filename;
+        $directory = self::bornpadelPublicPath().'/'.dirname($relativePath);
+
+        if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
+            throw new \RuntimeException('Gagal menyiapkan folder bukti bayar.');
+        }
+
+        $file->move($directory, $filename);
+
+        return $relativePath;
+    }
+
+    private static function bornpadelPublicPath(): string
+    {
+        $configured = config('services.bornpadel.public_path');
+        if ($configured) {
+            return rtrim((string) $configured, '/\\');
+        }
+
+        $sibling = realpath(base_path('../bornpadel/public'));
+        if ($sibling) {
+            return $sibling;
+        }
+
+        return public_path();
+    }
+
+    public static function paymentReceiptUrl(?string $relativePath): ?string
+    {
+        if (! $relativePath) {
+            return null;
+        }
+
+        $normalized = str_replace('\\', '/', ltrim($relativePath, '/'));
+        $publicRoot = self::bornpadelPublicPath();
+        $fullPath = $publicRoot.'/'.$normalized;
+
+        if (! file_exists($fullPath)) {
+            return null;
+        }
+
+        $baseUrl = rtrim((string) config('services.bornpadel.public_url'), '/');
+
+        if ($baseUrl === '') {
+            return null;
+        }
+
+        return $baseUrl.'/public/'.$normalized;
+    }
+
+    public static function canUploadPaymentReceipt(?string $status, ?string $buktiBayarUrl): bool
+    {
+        if ($buktiBayarUrl) {
+            return false;
+        }
+
+        return in_array($status, ['unpaid', 'pending', null, ''], true);
     }
 
     /**

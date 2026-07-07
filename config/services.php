@@ -31,9 +31,14 @@ return [
     ],
 
     'bornpadel' => [
-        // 'api_url' => env('BORNPADEL_API_URL', 'http://localhost/bornpadel/api/v1/external'),
-        'api_url' => env('BORNPADEL_API_URL', 'https://bornpadel.net/api/v1/external'),
+        'api_url' => env('BORNPADEL_API_URL', env('APP_ENV') === 'local'
+            ? 'http://localhost/bornpadel/api/v1/external'
+            : 'https://bornpadel.net/api/v1/external'),
         'api_token' => env('BORNPADEL_API_TOKEN', '91972885-619d-491b-905d-429b51691214'),
+        'public_url' => env('BORNPADEL_PUBLIC_URL', env('APP_ENV') === 'local'
+            ? 'http://localhost/bornpadel'
+            : 'https://bornpadel.net'),
+        'public_path' => env('BORNPADEL_PUBLIC_PATH'),
     ],
 
 ];

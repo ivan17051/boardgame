@@ -44,6 +44,20 @@ Route::get('/turnamen/mahjong', [PublicMahjongTournamentController::class, 'inde
 Route::get('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController::class, 'showRegister'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.register');
+Route::post('/turnamen/mahjong/{id}/daftar/cek', [PublicMahjongTournamentController::class, 'checkRegister'])
+    ->whereNumber('id')
+    ->middleware('throttle:20,1')
+    ->name('public.mahjong-tournaments.register.check');
+Route::get('/turnamen/mahjong/{id}/daftar/formulir', [PublicMahjongTournamentController::class, 'showRegisterForm'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.register.form');
+Route::get('/turnamen/mahjong/{id}/daftar/status', [PublicMahjongTournamentController::class, 'showRegisterStatus'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.register.status');
+Route::post('/turnamen/mahjong/{id}/daftar/bukti-bayar', [PublicMahjongTournamentController::class, 'uploadPaymentReceipt'])
+    ->whereNumber('id')
+    ->middleware('throttle:10,1')
+    ->name('public.mahjong-tournaments.register.receipt');
 Route::post('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController::class, 'submitRegister'])
     ->whereNumber('id')
     ->middleware('throttle:10,1')

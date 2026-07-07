@@ -59,8 +59,8 @@
 
 @section('content')
   <header class="page-header text-center mb-4">
-    <a href="{{ route('home') }}" class="btn btn-sm btn-outline-secondary mb-3">
-      <i class="bi bi-arrow-left me-1"></i>Kembali
+    <a href="{{ route('public.mahjong-tournaments.register', $tournament['id']) }}" class="btn btn-sm btn-outline-secondary mb-3">
+      <i class="bi bi-arrow-left me-1"></i>Ganti nomor HP
     </a>
     <h1><i class="bi bi-person-plus me-2"></i>Daftar Turnamen</h1>
     <p>{{ $tournament['nama'] ?? 'Turnamen Mahjong' }}</p>
@@ -84,6 +84,12 @@
         </div>
       @endif
 
+      @if (! empty($pemainExists))
+        <div class="alert alert-info py-2 small">
+          Nama dan jenis kelamin sudah diisi dari data pemain. Anda dapat mengubahnya jika perlu.
+        </div>
+      @endif
+
       @if ($errors->has('form'))
         <div class="alert alert-danger">{{ $errors->first('form') }}</div>
       @endif
@@ -91,8 +97,12 @@
       <form method="post" action="{{ route('public.mahjong-tournaments.register.store', $tournament['id']) }}" novalidate>
         @csrf
         <input type="hidden" name="id_turnamen" value="{{ $tournament['id'] }}" />
-        <input type="hidden" name="rating" value="0" />
-        <input type="hidden" name="status" value="pending" />
+        <input type="hidden" name="no_hp" value="{{ $prefillNoHp }}" />
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nomor HP</label>
+          <input type="text" class="form-control bg-light" value="{{ $prefillNoHp }}" readonly />
+        </div>
 
         <div class="mb-3">
           <label for="nama" class="form-label fw-semibold">Nama Lengkap <span class="text-danger">*</span></label>
@@ -101,7 +111,7 @@
             name="nama"
             id="nama"
             class="form-control @error('nama') is-invalid @enderror"
-            value="{{ old('nama') }}"
+            value="{{ $prefillNama }}"
             placeholder="Masukkan nama lengkap"
             required
             autocomplete="name"
@@ -112,19 +122,16 @@
         </div>
 
         <div class="mb-3">
-          <x-phone-input
-            name="no_hp"
-            id="register_no_hp"
-            :value="old('no_hp')"
-          />
-        </div>
-
-        <div class="mb-3">
           <label for="gender" class="form-label fw-semibold">Jenis Kelamin <span class="text-danger">*</span></label>
-          <select name="gender" id="gender" class="form-select @error('gender') is-invalid @enderror" required>
-            <option value="" disabled {{ old('gender') ? '' : 'selected' }}>Pilih jenis kelamin</option>
-            <option value="male" {{ old('gender') === 'male' ? 'selected' : '' }}>Laki-laki</option>
-            <option value="female" {{ old('gender') === 'female' ? 'selected' : '' }}>Perempuan</option>
+          <select
+            name="gender"
+            id="gender"
+            class="form-select @error('gender') is-invalid @enderror"
+            required
+          >
+            <option value="" disabled {{ $prefillGender ? '' : 'selected' }}>Pilih jenis kelamin</option>
+            <option value="male" {{ $prefillGender === 'male' ? 'selected' : '' }}>Laki-laki</option>
+            <option value="female" {{ $prefillGender === 'female' ? 'selected' : '' }}>Perempuan</option>
           </select>
           @error('gender')
             <div class="invalid-feedback">{{ $message }}</div>

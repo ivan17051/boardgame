@@ -20,6 +20,29 @@ class PhoneNumberService
         return '+62';
     }
 
+    public function normalize(?string $countryCode, ?string $localNumber): string
+    {
+        $code = $this->sanitizeCountryCode($countryCode ?: $this->defaultCountryCode());
+        $local = $this->sanitizeLocalNumber($localNumber ?? '');
+
+        if ($local === '') {
+            return '';
+        }
+
+        if (strpos($local, '+') === 0) {
+            return $local;
+        }
+
+        return $code.$local;
+    }
+
+    public function sanitizeCountryCode(string $code): string
+    {
+        $normalized = '+'.preg_replace('/\D+/', '', $code);
+
+        return $normalized === '+' ? $this->defaultCountryCode() : $normalized;
+    }
+
     public function parse(?string $fullNumber): array
     {
         $full = trim((string) $fullNumber);
@@ -38,7 +61,7 @@ class PhoneNumberService
             return [
                 'country_code' => $this->defaultCountryCode(),
                 'local_number' => $digits,
-                'full' => $this->defaultCountryCode().$this->sanitizeLocalNumber($digits),
+                'full' => $this->normalize($this->defaultCountryCode(), $digits),
             ];
         }
 
