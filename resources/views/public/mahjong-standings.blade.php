@@ -79,8 +79,10 @@
 @section('content')
   @php
     $turnamen = $standings['turnamen'] ?? [];
-    $sections = $standings['sections'] ?? [];
-    $overall = $standings['overall'] ?? [];
+    $sections = collect($standings['sections'] ?? [])
+      ->sortByDesc(fn ($section) => (int) ($section['babak'] ?? 0))
+      ->values()
+      ->all();
 
     $status = $turnamen['status'] ?? '';
     if ($status === 'ongoing') {
@@ -109,7 +111,13 @@
     </div>
   </header>
 
-  @if (empty($sections) && empty($overall))
+  @if (! empty($standingsError))
+    <div class="alert alert-warning" role="alert">
+      <i class="bi bi-exclamation-triangle me-1"></i>{{ $standingsError }}
+    </div>
+  @endif
+
+  @if (empty($sections))
     <div class="card standings-table-card">
       <div class="card-body text-center text-secondary py-5">
         <i class="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -185,44 +193,5 @@
         </div>
       </section>
     @endforeach
-
-    @if (! empty($overall))
-      <section class="babak-section">
-        <div class="babak-title">
-          <i class="bi bi-trophy me-1 text-primary"></i>Klasemen Akumulasi
-        </div>
-        <div class="card standings-table-card">
-          <div class="table-responsive">
-            <table class="table table-hover">
-              <thead>
-                <tr>
-                  <th style="width: 3.5rem;" class="text-center">#</th>
-                  <th>Pemain</th>
-                  <th class="text-center">Total Poin</th>
-                </tr>
-              </thead>
-              <tbody>
-                @foreach ($overall as $index => $row)
-                  @php $rank = (int) ($row['rank'] ?? ($index + 1)); @endphp
-                  <tr class="{{ $rank === 1 ? 'leader-row' : '' }}">
-                    <td class="text-center">
-                      @if ($rank === 1)
-                        <i class="bi bi-trophy-fill text-warning"></i>
-                      @else
-                        <span class="rank-num">{{ $rank }}</span>
-                      @endif
-                    </td>
-                    <td class="fw-semibold">{{ $row['nama'] ?? '—' }}</td>
-                    <td class="text-center">
-                      <span class="total-pill">{{ (int) ($row['total_poin'] ?? 0) }}</span>
-                    </td>
-                  </tr>
-                @endforeach
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-    @endif
   @endif
 @endsection

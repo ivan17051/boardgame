@@ -32,21 +32,34 @@ class PublicMahjongTournamentController extends Controller
 
     public function standings(int $id): View
     {
-        $result = BornpadelMahjongTournaments::fetchGroupStandings($id);
+        $tournament = BornpadelMahjongTournaments::findMahjongTournament($id);
 
-        if ($result['error'] !== null || $result['data'] === null) {
-            abort(404, $result['error'] ?? 'Klasemen tidak ditemukan.');
+        if (! $tournament) {
+            abort(404, 'Turnamen tidak ditemukan.');
         }
 
-        $data = $result['data'];
-        $status = $data['turnamen']['status'] ?? null;
+        $status = $tournament['status'] ?? null;
 
         if (! in_array($status, ['ongoing', 'completed'], true)) {
             abort(404, 'Klasemen belum tersedia untuk turnamen ini.');
         }
 
+        $result = BornpadelMahjongTournaments::fetchGroupStandings($id);
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+
+        if ($data === []) {
+            $data = [
+                'turnamen' => $tournament,
+                'sections' => [],
+                'overall' => [],
+                'recap' => [],
+                'babak_numbers' => [],
+            ];
+        }
+
         return view('public.mahjong-standings', [
             'standings' => $data,
+            'standingsError' => $result['error'],
         ]);
     }
 

@@ -246,13 +246,15 @@
                 <i class="bi bi-calendar3 me-1"></i>{{ $tanggal }}
               </div>
 
-              <div class="price-tag">
-                @if ($harga > 0)
-                  Rp {{ number_format($harga, 0, ',', '.') }}
-                @else
-                  Gratis
-                @endif
-              </div>
+              @if ($status === 'open')
+                <div class="price-tag">
+                  @if ($harga > 0)
+                    Rp {{ number_format($harga, 0, ',', '.') }}
+                  @else
+                    Gratis
+                  @endif
+                </div>
+              @endif
 
               <div class="mt-auto d-flex flex-column gap-2 w-100">
                   @if ($status === 'open')

@@ -50,18 +50,7 @@ class BornpadelMahjongTournaments
             }
 
             $items = $query->get()->map(function ($row) {
-                return [
-                    'id' => (int) $row->id,
-                    'nama' => $row->nama,
-                    'tanggal' => $row->tanggal ?? null,
-                    'harga' => $row->harga ?? 0,
-                    'syarat' => $row->syarat ?? null,
-                    'jenis' => $row->jenis ?? 'mahjong',
-                    'jenis_label' => 'Mahjong',
-                    'status' => $row->status ?? null,
-                    'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
-                    'registration_open' => ($row->status ?? null) === 'open',
-                ];
+                return self::mapTournamentRow($row);
             })->values()->all();
 
             return [
@@ -702,6 +691,11 @@ class BornpadelMahjongTournaments
      */
     public static function findMahjongTournament(int $id): ?array
     {
+        $fromDatabase = self::findMahjongTournamentFromDatabase($id);
+        if ($fromDatabase !== null) {
+            return $fromDatabase;
+        }
+
         $result = self::fetch();
 
         if ($result['error'] !== null) {
@@ -715,6 +709,54 @@ class BornpadelMahjongTournaments
         }
 
         return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function findMahjongTournamentFromDatabase(int $id): ?array
+    {
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasColumn('m_turnamen', 'jenis')) {
+                return null;
+            }
+
+            $row = $connection->table('m_turnamen')
+                ->where('id', $id)
+                ->where('jenis', 'mahjong')
+                ->first();
+
+            if (! $row) {
+                return null;
+            }
+
+            return self::mapTournamentRow($row);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  object  $row
+     * @return array<string, mixed>
+     */
+    private static function mapTournamentRow($row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'nama' => $row->nama,
+            'tanggal' => $row->tanggal ?? null,
+            'harga' => $row->harga ?? 0,
+            'syarat' => $row->syarat ?? null,
+            'jenis' => $row->jenis ?? 'mahjong',
+            'jenis_label' => 'Mahjong',
+            'status' => $row->status ?? null,
+            'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
+            'registration_open' => ($row->status ?? null) === 'open',
+        ];
     }
 
     /**
