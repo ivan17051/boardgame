@@ -154,6 +154,21 @@ class CashFlow extends Model
 
     public function amountPaid(): float
     {
+        $rental = $this->paymentRental();
+        if ($rental) {
+            return $rental->amountPaid();
+        }
+
+        return (float) ($this->jumlah_bayar ?? $this->total);
+    }
+
+    public function billAmount(): float
+    {
+        $rental = $this->paymentRental();
+        if ($rental) {
+            return $rental->billTotal();
+        }
+
         return (float) $this->total;
     }
 

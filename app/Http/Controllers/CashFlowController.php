@@ -61,24 +61,11 @@ class CashFlowController extends Controller
         $incomeRows = $entries->filter(fn (CashFlow $row) => $row->isIncome());
         $expenseRows = $entries->filter(fn (CashFlow $row) => ! $row->isIncome());
 
-        $countedRentalPayments = [];
-        $totalIncomeBayar = 0.0;
-        foreach ($incomeRows as $row) {
-            if ($row->id_rental) {
-                if (isset($countedRentalPayments[$row->id_rental])) {
-                    continue;
-                }
-                $countedRentalPayments[$row->id_rental] = true;
-                $rental = $row->rental;
-                $totalIncomeBayar += $rental ? $rental->amountPaid() : (float) $row->total;
-            } else {
-                $totalIncomeBayar += (float) ($row->jumlah_bayar ?? $row->total);
-            }
-        }
+        $incomeSummary = $this->summarizeIncomeRows($incomeRows);
 
         $summary = [
-            'total_income_tagihan' => (float) $incomeRows->sum(fn (CashFlow $r) => (float) $r->total),
-            'total_income_bayar' => $totalIncomeBayar,
+            'total_income_tagihan' => $incomeSummary['total_tagihan'],
+            'total_income_bayar' => $incomeSummary['total_bayar'],
             'total_sewa_meja' => (float) $incomeRows
                 ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_SEWA_MEJA)
                 ->sum(fn (CashFlow $r) => (float) $r->total),
@@ -86,7 +73,7 @@ class CashFlowController extends Controller
                 ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_ADDITIONAL_FB)
                 ->sum(fn (CashFlow $r) => (float) $r->total),
             'total_expense' => (float) $expenseRows->sum(fn (CashFlow $r) => (float) $r->total),
-            'count_income' => $incomeRows->count(),
+            'count_income' => $incomeSummary['count'],
             'by_metode' => $this->incomeByMetode($incomeRows),
         ];
 
@@ -99,6 +86,41 @@ class CashFlowController extends Controller
         }
 
         return view('cashflow.report', $data);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, CashFlow>  $incomeRows
+     * @return array{total_tagihan: float, total_bayar: float, count: int}
+     */
+    private function summarizeIncomeRows($incomeRows): array
+    {
+        $countedRentals = [];
+        $totalTagihan = 0.0;
+        $totalBayar = 0.0;
+        $count = 0;
+
+        foreach ($incomeRows as $row) {
+            if ($row->id_rental) {
+                if (isset($countedRentals[$row->id_rental])) {
+                    continue;
+                }
+                $countedRentals[$row->id_rental] = true;
+                $count++;
+                $rental = $row->rental;
+                $totalTagihan += $rental ? $rental->billTotal() : (float) $row->total;
+                $totalBayar += $rental ? $rental->amountPaid() : (float) ($row->jumlah_bayar ?? $row->total);
+            } else {
+                $count++;
+                $totalTagihan += (float) $row->total;
+                $totalBayar += (float) ($row->jumlah_bayar ?? $row->total);
+            }
+        }
+
+        return [
+            'total_tagihan' => $totalTagihan,
+            'total_bayar' => $totalBayar,
+            'count' => $count,
+        ];
     }
 
     /**

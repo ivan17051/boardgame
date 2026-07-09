@@ -88,6 +88,13 @@
       </div>
     </div>
 
+    @if (abs($summary['total_income_tagihan'] - $summary['total_income_bayar']) > 0.5)
+      <div class="alert alert-info py-2 small mb-3">
+        Selisih tagihan dan pemasukan biasanya karena jumlah bayar berbeda dari total tagihan sewa
+        (pembayaran sebagian, lebih bayar, atau koreksi manual di riwayat sewa).
+      </div>
+    @endif
+
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="card-title mb-0">Pratinjau — {{ \Carbon\Carbon::parse($dateFrom)->format('d/m/Y') }} s/d {{ \Carbon\Carbon::parse($dateTo)->format('d/m/Y') }}</h3>
@@ -107,15 +114,29 @@
               </tr>
             </thead>
             <tbody>
+              @php $shownRentalPayment = []; @endphp
               @forelse ($incomeRows as $row)
-                @php $st = $row->kelengkapanStatus(); @endphp
+                @php
+                  $st = $row->kelengkapanStatus();
+                  $paidDisplay = null;
+                  if ($row->id_rental) {
+                    if (! isset($shownRentalPayment[$row->id_rental])) {
+                      $shownRentalPayment[$row->id_rental] = true;
+                      $paidDisplay = $row->amountPaid();
+                    }
+                  } else {
+                    $paidDisplay = (float) ($row->jumlah_bayar ?? $row->total);
+                  }
+                @endphp
                 <tr>
                   <td class="text-nowrap small">{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</td>
                   <td class="small">{{ \App\Models\CashFlow::kategoriPendapatanLabel($row->kategori_pendapatan) }}</td>
                   <td class="text-break small">{{ $row->keterangan ?: '—' }}</td>
                   <td class="small">{{ \App\Models\CashFlow::metodePembayaranLabel($row->paymentMetode()) }}</td>
                   <td class="text-end font-monospace small">{{ $fmtRp($row->total) }}</td>
-                  <td class="text-end font-monospace small text-success">{{ $fmtRp($row->amountPaid()) }}</td>
+                  <td class="text-end font-monospace small text-success">
+                    {{ $paidDisplay !== null ? $fmtRp($paidDisplay) : '—' }}
+                  </td>
                   <td>
                     @if ($st === 'lengkap')
                       <span class="badge text-bg-success">Lengkap</span>

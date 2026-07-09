@@ -189,12 +189,15 @@ class RentalHistoryController extends Controller
         $totalHarga = isset($validated['total_harga'])
             ? (float) $validated['total_harga']
             : (float) $rental->billTotal();
+        $totalHargaAdditional = (float) ($rental->total_harga_additional ?? 0);
+        $totalHargaSewa = max(0, round($totalHarga - $totalHargaAdditional, 3));
 
         $rental->update([
             'nama_customer' => $validated['nama_customer'],
             'tipe_customer' => $validated['tipe_customer'],
             'total_harga' => $totalHarga,
             'total' => $totalHarga,
+            'total_harga_sewa' => $totalHargaSewa,
         ]);
 
         if (! empty($validated['metode_pembayaran'])) {
@@ -229,8 +232,32 @@ class RentalHistoryController extends Controller
         }
 
         $this->syncCashFlowKeterangan($rental->fresh());
+        $this->syncCashFlowTotals($rental->fresh());
 
         return response()->json(['message' => 'Data sewa berhasil diperbarui.']);
+    }
+
+    private function syncCashFlowTotals(Rental $rental): void
+    {
+        $sewa = (float) ($rental->total_harga_sewa ?? 0);
+        $additional = (float) ($rental->total_harga_additional ?? 0);
+
+        CashFlow::query()
+            ->where('id_rental', $rental->id)
+            ->where('kategori_pendapatan', CashFlow::KATEGORI_SEWA_MEJA)
+            ->update(['total' => $sewa]);
+
+        $additionalQuery = CashFlow::query()
+            ->where('id_rental', $rental->id)
+            ->where('kategori_pendapatan', CashFlow::KATEGORI_ADDITIONAL_FB);
+
+        if ($additional != 0.0) {
+            if ($additionalQuery->exists()) {
+                $additionalQuery->update(['total' => $additional]);
+            }
+        } else {
+            $additionalQuery->delete();
+        }
     }
 
     private function syncCashFlowKeterangan(Rental $rental): void

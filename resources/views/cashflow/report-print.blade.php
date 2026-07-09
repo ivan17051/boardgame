@@ -178,8 +178,20 @@
         </tr>
       </thead>
       <tbody>
+        @php $shownRentalPayment = []; @endphp
         @forelse ($incomeRows as $i => $row)
-          @php $st = $row->kelengkapanStatus(); @endphp
+          @php
+            $st = $row->kelengkapanStatus();
+            $paidDisplay = null;
+            if ($row->id_rental) {
+              if (! isset($shownRentalPayment[$row->id_rental])) {
+                $shownRentalPayment[$row->id_rental] = true;
+                $paidDisplay = $row->amountPaid();
+              }
+            } else {
+              $paidDisplay = (float) ($row->jumlah_bayar ?? $row->total);
+            }
+          @endphp
           <tr>
             <td>{{ $i + 1 }}</td>
             <td>{{ $row->waktu_pembayaran->format('d/m/Y H:i') }}</td>
@@ -187,7 +199,7 @@
             <td>{{ $row->keterangan ?: '—' }}</td>
             <td>{{ \App\Models\CashFlow::metodePembayaranLabel($row->paymentMetode()) }}</td>
             <td class="text-end">{{ number_format((float) $row->total, 0, ',', '.') }}</td>
-            <td class="text-end">{{ number_format($row->amountPaid(), 0, ',', '.') }}</td>
+            <td class="text-end">{{ $paidDisplay !== null ? number_format($paidDisplay, 0, ',', '.') : '—' }}</td>
             <td>{{ $row->kelengkapanStatusLabel() }}</td>
           </tr>
         @empty
