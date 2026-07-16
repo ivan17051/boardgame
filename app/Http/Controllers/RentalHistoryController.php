@@ -6,6 +6,7 @@ use App\Models\CashFlow;
 use App\Models\Meja;
 use App\Models\Rental;
 use App\Models\RentalPromo;
+use App\Support\RentalAudit;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
 use App\Support\RentalPayment;
@@ -131,7 +132,9 @@ class RentalHistoryController extends Controller
     {
         TokoScope::authorizeRental($rental);
 
-        DB::transaction(function () use ($rental) {
+        $original = RentalAudit::snapshot($rental);
+
+        DB::transaction(function () use ($rental, $original) {
             $locked = Rental::query()->whereKey($rental->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->isActive() && $locked->id_meja) {
@@ -140,6 +143,7 @@ class RentalHistoryController extends Controller
                     ->update(['status' => 'active']);
             }
 
+            RentalAudit::logDelete($locked, $original);
             $locked->delete();
         });
 
@@ -160,6 +164,7 @@ class RentalHistoryController extends Controller
             abort(404);
         }
 
+        $original = RentalAudit::snapshot($rental);
         $rate = RentalCheckout::rateForMeja($rental->meja, $validated['tipe_customer']);
 
         $rental->update([
@@ -167,6 +172,8 @@ class RentalHistoryController extends Controller
             'tipe_customer' => $validated['tipe_customer'],
             'harga' => $rate,
         ]);
+
+        RentalAudit::logUpdate($rental, $original);
 
         return response()->json(['message' => 'Data sewa aktif berhasil diperbarui.']);
     }
@@ -185,6 +192,8 @@ class RentalHistoryController extends Controller
             'waktu_pembayaran' => ['nullable', 'date'],
             'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ]);
+
+        $original = RentalAudit::snapshot($rental);
 
         $totalHarga = isset($validated['total_harga'])
             ? (float) $validated['total_harga']
@@ -233,6 +242,8 @@ class RentalHistoryController extends Controller
 
         $this->syncCashFlowKeterangan($rental->fresh());
         $this->syncCashFlowTotals($rental->fresh());
+
+        RentalAudit::logUpdate($rental, $original);
 
         return response()->json(['message' => 'Data sewa berhasil diperbarui.']);
     }

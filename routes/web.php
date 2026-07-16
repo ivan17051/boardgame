@@ -13,6 +13,7 @@ use App\Http\Controllers\RentalPromoController;
 use App\Http\Controllers\RentalHistoryController;
 use App\Http\Controllers\TokoController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\LogController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -116,6 +117,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/rental-promos', [RentalPromoController::class, 'store'])->name('rental-promos.store');
         Route::put('/rental-promos/{rentalPromo}', [RentalPromoController::class, 'update'])->name('rental-promos.update');
         Route::delete('/rental-promos/{rentalPromo}', [RentalPromoController::class, 'destroy'])->name('rental-promos.destroy');
+
+        Route::get('/logs', [LogController::class, 'index'])->name('logs.index');
+        Route::get('/logs/{log}', [LogController::class, 'show'])->name('logs.show');
     });
 
     Route::get('/sewa', [RentalController::class, 'index'])->name('rental.index');

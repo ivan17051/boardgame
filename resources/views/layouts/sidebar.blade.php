@@ -55,6 +55,12 @@
           <p>Promo sewa</p>
         </a>
       </li>
+      <li class="nav-item">
+        <a href="{{ route('logs.index') }}" class="nav-link {{ request()->routeIs('logs.*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-journal-text"></i>
+          <p>Log perubahan</p>
+        </a>
+      </li>
       @endif
 
       <li class="nav-header">TRANSAKSI</li>
