@@ -37,6 +37,13 @@
               @php
                 $rental = $meja->activeRental;
                 $occupied = $meja->status === 'rented' && $rental;
+                $savedItemsCount = $occupied ? $rental->additionalItems->sum('qty') : 0;
+                $savedItemsTotal = $occupied ? (float) $rental->additionalItems->sum('subtotal') : 0;
+                $fbPaid = false;
+                if ($occupied) {
+                  $fbFlow = $rental->cashFlows->firstWhere('kategori_pendapatan', \App\Models\CashFlow::KATEGORI_ADDITIONAL_FB);
+                  $fbPaid = $fbFlow && ! empty($fbFlow->metode_pembayaran);
+                }
               @endphp
               <div class="col-6 col-md-3">
                 <button
@@ -53,6 +60,9 @@
                     data-start-epoch="{{ $rental->waktu_start->timestamp }}"
                     data-customer="{{ $rental->nama_customer }}"
                     data-tipe="{{ $rental->tipe_customer ?? 'non_member' }}"
+                    data-items-count="{{ (int) $savedItemsCount }}"
+                    data-items-total="{{ $savedItemsTotal }}"
+                    data-items-paid="{{ $fbPaid ? '1' : '0' }}"
                   @endif
                 >
                   <div class="card h-100 shadow-sm mb-0">
@@ -68,6 +78,14 @@
                         <div class="small text-truncate" title="{{ $rental->nama_customer }}">{{ $rental->nama_customer }}</div>
                         <div class="small text-secondary">{{ $rental->isMember() ? 'Member' : 'Non-Member' }}</div>
                         <div class="small text-secondary">Mulai: {{ $rental->waktu_start->format('H:i') }}</div>
+                        @if ($savedItemsCount > 0)
+                          <div class="small mt-1">
+                            <span class="badge {{ $fbPaid ? 'text-bg-success' : 'text-bg-info text-dark' }}">
+                              {{ (int) $savedItemsCount }} item
+                              @if ($fbPaid) · lunas @endif
+                            </span>
+                          </div>
+                        @endif
                       @else
                         <div class="small text-secondary mt-2">Non-Mbr: {{ $fmtRp($meja->harga) }}/jam</div>
                         <div class="small text-secondary">Member: {{ $fmtRp($meja->harga_member ?? $meja->harga) }}/jam</div>
@@ -82,6 +100,129 @@
         @endif
       @endforeach
     @endif
+  </div>
+</div>
+
+{{-- Occupied action chooser --}}
+<div class="modal fade" id="occupiedActionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Meja <span id="occupiedActionMejaLabel"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body d-grid gap-2">
+        <p class="small text-secondary mb-1" id="occupiedActionCustomer"></p>
+        <button type="button" class="btn btn-outline-primary" id="occupiedActionItemsBtn">
+          <i class="bi bi-basket me-1"></i>Item tambahan
+        </button>
+        <button type="button" class="btn btn-warning" id="occupiedActionCheckoutBtn">
+          <i class="bi bi-cash-coin me-1"></i>Checkout
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Mid-session items --}}
+<div class="modal fade" id="itemsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Item tambahan — <span id="itemsMejaLabel">Meja</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <div id="itemsAlert" class="alert alert-danger d-none small"></div>
+        <div id="itemsPaidBanner" class="alert alert-success d-none small py-2"></div>
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+          <h6 class="fw-semibold mb-0">Item tambahan &amp; diskon</h6>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="midTambahItemBtn">
+            <i class="bi bi-plus-lg me-1"></i>Tambah item
+          </button>
+        </div>
+        <div id="itemsEmpty" class="text-secondary small mb-2 d-none">Belum ada item di master.</div>
+        <div class="table-responsive mb-2">
+          <table class="table table-sm align-middle mb-0" id="midItemsTable">
+            <thead class="table-light">
+              <tr>
+                <th>Item</th>
+                <th class="text-end" style="width:100px">Nilai</th>
+                <th style="width:90px">Qty</th>
+                <th class="text-end" style="width:110px">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach ($additionalItems as $item)
+                <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-discount="{{ $item->is_discount ? '1' : '0' }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
+                  <td>
+                    {{ $item->nama }}
+                    @if ($item->is_discount)
+                      <span class="badge text-bg-warning text-dark ms-1">Diskon</span>
+                    @endif
+                  </td>
+                  <td class="text-end font-monospace small">
+                    @if ($item->is_discount)
+                      − {{ $fmtRp($item->harga) }}
+                    @else
+                      {{ $fmtRp($item->harga) }}
+                    @endif
+                  </td>
+                  <td>
+                    <input type="number" class="form-control form-control-sm mid-item-qty" min="0" max="999" value="0" data-item-id="{{ $item->id }}" />
+                  </td>
+                  <td class="text-end font-monospace small mid-item-line-total">Rp 0</td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+        <nav id="midItemsPager" class="d-none mb-2" aria-label="Pagination item tambahan"></nav>
+        <div class="border rounded p-3 bg-light mb-3">
+          <div class="d-flex justify-content-between fw-semibold">
+            <span>Total item</span>
+            <span class="font-monospace" id="midItemsTotal">Rp 0</span>
+          </div>
+          <div class="d-flex justify-content-between small text-secondary mt-1">
+            <span>Sudah dibayar</span>
+            <span class="font-monospace" id="midItemsPaid">Rp 0</span>
+          </div>
+          <div class="d-flex justify-content-between small">
+            <span>Sisa tagihan item</span>
+            <span class="font-monospace" id="midItemsDue">Rp 0</span>
+          </div>
+        </div>
+
+        <h6 class="fw-semibold mb-2">Bayar item sekarang (opsional)</h6>
+        <div class="mb-2">
+          <label for="items_jumlah_bayar" class="form-label">Jumlah bayar</label>
+          <div class="input-group">
+            <span class="input-group-text">Rp</span>
+            <input type="number" class="form-control" id="items_jumlah_bayar" min="0" step="1" />
+          </div>
+        </div>
+        <div class="mb-2">
+          <label for="items_metode" class="form-label">Metode pembayaran</label>
+          <select class="form-select" id="items_metode">
+            <option value="">— Pilih untuk bayar sekarang —</option>
+            <option value="tunai">Tunai</option>
+            <option value="transfer">Transfer bank</option>
+            <option value="qris">QRIS / e-wallet</option>
+            <option value="kartu">Kartu debit/kredit</option>
+            <option value="lainnya">Lainnya</option>
+          </select>
+        </div>
+        <div class="mb-0">
+          <label for="items_bukti" class="form-label">Bukti bayar</label>
+          <input type="file" class="form-control" id="items_bukti" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Tutup</button>
+        <button type="button" class="btn btn-outline-primary" id="itemsSaveBtn">Simpan item</button>
+        <button type="button" class="btn btn-primary" id="itemsSavePayBtn">Simpan &amp; bayar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -153,8 +294,13 @@
       <div class="modal-body">
         <div id="checkoutSummary" class="border rounded p-3 bg-body-secondary small mb-3">Memuat…</div>
 
-        <h6 class="fw-semibold">Item tambahan &amp; diskon</h6>
-        <div id="additionalItemsEmpty" class="text-secondary small mb-2 d-none">Belum ada item di master. Tambah di menu <strong>Item tambahan</strong>.</div>
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+          <h6 class="fw-semibold mb-0">Item tambahan &amp; diskon</h6>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="checkoutTambahItemBtn">
+            <i class="bi bi-plus-lg me-1"></i>Tambah item
+          </button>
+        </div>
+        <div id="additionalItemsEmpty" class="text-secondary small mb-2 d-none">Belum ada item di master. Gunakan <strong>Tambah item</strong> atau menu Item tambahan.</div>
         <div class="table-responsive mb-2">
           <table class="table table-sm align-middle mb-0" id="additionalItemsTable">
             <thead class="table-light">
@@ -191,12 +337,15 @@
             </tbody>
           </table>
         </div>
+        <nav id="additionalItemsPager" class="d-none mb-2" aria-label="Pagination item tambahan"></nav>
 
         <div class="border rounded p-3 bg-light mb-3">
           <div class="d-flex justify-content-between"><span>Biaya sewa meja</span><span class="font-monospace" id="checkoutSewaTotal">Rp 0</span></div>
           <div class="d-flex justify-content-between"><span>Item tambahan &amp; diskon</span><span class="font-monospace" id="checkoutAdditionalTotal">Rp 0</span></div>
+          <div class="d-flex justify-content-between small text-secondary"><span>Item sudah dibayar</span><span class="font-monospace" id="checkoutAdditionalPaid">Rp 0</span></div>
           <hr class="my-2" />
           <div class="d-flex justify-content-between fw-bold fs-5"><span>Total tagihan</span><span class="font-monospace text-primary" id="checkoutGrandTotal">Rp 0</span></div>
+          <div class="d-flex justify-content-between fw-semibold"><span>Sisa dibayar sekarang</span><span class="font-monospace" id="checkoutTotalDue">Rp 0</span></div>
         </div>
 
         <h6 class="fw-semibold mb-2">Pembayaran</h6>
@@ -208,7 +357,7 @@
             <span class="input-group-text">Rp</span>
             <input type="number" class="form-control" id="checkout_jumlah_bayar" min="0" step="1" />
           </div>
-          <div class="form-text">Opsional. Jika metode pembayaran dipilih, default mengikuti total tagihan.</div>
+          <div class="form-text">Opsional. Jika metode dipilih, default mengikuti sisa tagihan.</div>
         </div>
 
         <div class="mb-3">
@@ -243,6 +392,36 @@
     </div>
   </div>
 </div>
+
+{{-- Quick-add additional item (non-discount) --}}
+<div class="modal fade" id="quickAddItemModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Tambah item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <div id="quickAddItemAlert" class="alert alert-danger d-none small"></div>
+        <div class="mb-3">
+          <label for="quick_item_nama" class="form-label">Nama</label>
+          <input type="text" class="form-control" id="quick_item_nama" maxlength="255" autocomplete="off" />
+        </div>
+        <div class="mb-0">
+          <label for="quick_item_harga" class="form-label">Harga</label>
+          <div class="input-group">
+            <span class="input-group-text">Rp</span>
+            <input type="number" class="form-control" id="quick_item_harga" min="0" step="1" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="quickAddItemSaveBtn">Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
 @endsection
 
 @push('styles')
@@ -254,6 +433,8 @@
   .meja-card--occupied:hover .card { transform: translateY(-2px); box-shadow: 0 0.5rem 1rem rgba(253, 126, 20, 0.2); }
   .meja-card--available:focus-visible .card,
   .meja-card--occupied:focus-visible .card { box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.4); outline: none; }
+  tr.item-toko-hidden,
+  tr.item-page-hidden { display: none !important; }
 </style>
 @endpush
 
@@ -274,23 +455,42 @@
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
   const masterItems = @json($masterItemsForJs);
+  const userIdToko = @json(\App\Support\TokoScope::userIdToko());
+  const canSeeAllTokoJs = @json($canSeeAllToko);
   const routes = {
     store: @json(route('rental.store')),
     checkoutPreview: (id) => @json(url('/sewa')) + '/' + id + '/checkout-preview',
     checkout: (id) => @json(url('/sewa')) + '/' + id + '/checkout',
     cancel: (id) => @json(url('/sewa')) + '/' + id + '/cancel',
+    items: (id) => @json(url('/sewa')) + '/' + id + '/items',
+    itemsPay: (id) => @json(url('/sewa')) + '/' + id + '/items/pay',
+    quickAddItem: @json(route('additional-items.quick-store')),
   };
 
   const checkinModalEl = document.getElementById('checkinModal');
   const checkinModal = checkinModalEl ? new bootstrap.Modal(checkinModalEl) : null;
   const checkoutModalEl = document.getElementById('checkoutModal');
   const checkoutModal = checkoutModalEl ? new bootstrap.Modal(checkoutModalEl) : null;
+  const occupiedActionModalEl = document.getElementById('occupiedActionModal');
+  const occupiedActionModal = occupiedActionModalEl ? new bootstrap.Modal(occupiedActionModalEl) : null;
+  const itemsModalEl = document.getElementById('itemsModal');
+  const itemsModal = itemsModalEl ? new bootstrap.Modal(itemsModalEl) : null;
 
   let checkinMeja = null;
   let checkoutRentalId = null;
   let checkoutEndedAt = null;
   let checkoutGrandTotal = 0;
+  let checkoutTotalDue = 0;
+  let checkoutPrefillDone = false;
   let previewTimer = null;
+  let occupiedBtn = null;
+  let itemsRentalId = null;
+  let itemsTokoId = 0;
+  let checkoutTokoId = 0;
+  let quickAddTokoId = 0;
+  let midItemsTotal = 0;
+  let midItemsPaid = 0;
+  let midItemsDue = 0;
 
   const checkoutJumlahBayarEl = document.getElementById('checkout_jumlah_bayar');
   const checkoutMetodeEl = document.getElementById('checkout_metode');
@@ -299,6 +499,11 @@
   const checkoutBuktiHelpEl = document.getElementById('checkout_bukti_help');
   const checkoutPaymentAlert = document.getElementById('checkoutPaymentAlert');
   const checkoutCancelBtn = document.getElementById('checkoutCancelBtn');
+  const itemsMetodeEl = document.getElementById('items_metode');
+  const itemsJumlahBayarEl = document.getElementById('items_jumlah_bayar');
+  const itemsBuktiEl = document.getElementById('items_bukti');
+  const itemsAlert = document.getElementById('itemsAlert');
+  const itemsPaidBanner = document.getElementById('itemsPaidBanner');
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function formatHMS(totalSeconds) {
@@ -399,8 +604,300 @@
     btn.addEventListener('click', function () { openCheckin(btn); });
   });
   document.querySelectorAll('.meja-card--occupied').forEach(function (btn) {
-    btn.addEventListener('click', function () { openCheckout(btn); });
+    btn.addEventListener('click', function () { openOccupiedActions(btn); });
   });
+
+  function openOccupiedActions(btn) {
+    occupiedBtn = btn;
+    document.getElementById('occupiedActionMejaLabel').textContent = btn.getAttribute('data-meja-nama') || '';
+    document.getElementById('occupiedActionCustomer').textContent = btn.getAttribute('data-customer') || '';
+    occupiedActionModal?.show();
+  }
+
+  document.getElementById('occupiedActionItemsBtn')?.addEventListener('click', function () {
+    if (!occupiedBtn) return;
+    occupiedActionModal?.hide();
+    openItemsModal(occupiedBtn);
+  });
+
+  document.getElementById('occupiedActionCheckoutBtn')?.addEventListener('click', function () {
+    if (!occupiedBtn) return;
+    occupiedActionModal?.hide();
+    openCheckout(occupiedBtn);
+  });
+
+  function filterItemRows(tableSelector, tokoId) {
+    const canSeeAll = @json($canSeeAllToko);
+    document.querySelectorAll(tableSelector + ' tbody tr[data-item-id]').forEach(function (row) {
+      if (canSeeAll && tokoId) {
+        const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
+        row.classList.toggle('item-toko-hidden', itemToko !== tokoId);
+      } else {
+        row.classList.remove('item-toko-hidden');
+      }
+    });
+    const tableEl = document.querySelector(tableSelector);
+    if (tableEl) {
+      tableEl.dataset.page = '1';
+      paginateItemTable(tableEl);
+    }
+  }
+
+  const ITEMS_PER_PAGE = 10;
+
+  function paginateItemTable(tableEl, page) {
+    if (!tableEl) return;
+    const pagerId = tableEl.id === 'midItemsTable'
+      ? 'midItemsPager'
+      : (tableEl.id === 'additionalItemsTable' ? 'additionalItemsPager' : null);
+    const pagerEl = pagerId ? document.getElementById(pagerId) : null;
+    const allRows = Array.from(tableEl.querySelectorAll('tbody tr[data-item-id]'));
+    const eligible = allRows.filter(function (row) {
+      return !row.classList.contains('item-toko-hidden');
+    });
+
+    const total = eligible.length;
+    const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+    let current = page != null ? page : (parseInt(tableEl.dataset.page || '1', 10) || 1);
+    current = Math.min(Math.max(1, current), totalPages);
+    tableEl.dataset.page = String(current);
+
+    allRows.forEach(function (row) {
+      row.classList.add('item-page-hidden');
+    });
+    eligible.forEach(function (row, idx) {
+      const onPage = idx >= (current - 1) * ITEMS_PER_PAGE && idx < current * ITEMS_PER_PAGE;
+      row.classList.toggle('item-page-hidden', !onPage);
+    });
+
+    if (!pagerEl) return;
+    if (total <= ITEMS_PER_PAGE) {
+      pagerEl.classList.add('d-none');
+      pagerEl.innerHTML = '';
+      return;
+    }
+
+    pagerEl.classList.remove('d-none');
+    pagerEl.innerHTML =
+      '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">' +
+        '<span class="small text-secondary">' +
+          'Menampilkan ' + ((current - 1) * ITEMS_PER_PAGE + 1) + '–' + Math.min(current * ITEMS_PER_PAGE, total) +
+          ' dari ' + total + ' item' +
+        '</span>' +
+        '<div class="btn-group btn-group-sm" role="group">' +
+          '<button type="button" class="btn btn-outline-secondary item-page-prev"' + (current <= 1 ? ' disabled' : '') + '>Sebelumnya</button>' +
+          '<button type="button" class="btn btn-outline-secondary disabled">' + current + ' / ' + totalPages + '</button>' +
+          '<button type="button" class="btn btn-outline-secondary item-page-next"' + (current >= totalPages ? ' disabled' : '') + '>Berikutnya</button>' +
+        '</div>' +
+      '</div>';
+
+    pagerEl.querySelector('.item-page-prev')?.addEventListener('click', function () {
+      paginateItemTable(tableEl, current - 1);
+    });
+    pagerEl.querySelector('.item-page-next')?.addEventListener('click', function () {
+      paginateItemTable(tableEl, current + 1);
+    });
+  }
+
+  function resetQtyInTable(qtySelector, lineSelector) {
+    document.querySelectorAll(qtySelector).forEach(function (inp) {
+      inp.value = '0';
+      const row = inp.closest('tr');
+      const cell = row?.querySelector(lineSelector);
+      if (cell) cell.textContent = fmtRp(0);
+    });
+  }
+
+  function collectQtyFromTable(qtySelector) {
+    const items = [];
+    document.querySelectorAll(qtySelector).forEach(function (inp) {
+      const row = inp.closest('tr');
+      if (row?.classList.contains('item-toko-hidden')) return;
+      const qty = parseInt(inp.value, 10) || 0;
+      if (qty > 0) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
+    });
+    return items;
+  }
+
+  function applyQtyToTable(qtySelector, lineSelector, lines) {
+    resetQtyInTable(qtySelector, lineSelector);
+    (lines || []).forEach(function (line) {
+      const inp = document.querySelector(qtySelector + '[data-item-id="' + line.id + '"]');
+      if (!inp) return;
+      inp.value = String(line.qty);
+      const row = inp.closest('tr');
+      const cell = row?.querySelector(lineSelector);
+      if (cell) cell.textContent = fmtRp(line.subtotal != null ? line.subtotal : additionalLineSubtotal(row, line.qty));
+    });
+  }
+
+  function updateMidItemsLocalTotal() {
+    let total = 0;
+    document.querySelectorAll('.mid-item-qty').forEach(function (inp) {
+      const row = inp.closest('tr');
+      if (row?.classList.contains('item-toko-hidden')) return;
+      const qty = parseInt(inp.value, 10) || 0;
+      total += additionalLineSubtotal(row, qty);
+    });
+    midItemsTotal = total;
+    midItemsDue = Math.max(0, midItemsTotal - midItemsPaid);
+    document.getElementById('midItemsTotal').textContent = fmtRp(midItemsTotal);
+    document.getElementById('midItemsPaid').textContent = fmtRp(midItemsPaid);
+    document.getElementById('midItemsDue').textContent = fmtRp(midItemsDue);
+    if (itemsJumlahBayarEl && (itemsJumlahBayarEl.dataset.auto === '1' || itemsJumlahBayarEl.value === '')) {
+      itemsJumlahBayarEl.value = String(Math.round(midItemsTotal));
+      itemsJumlahBayarEl.dataset.auto = '1';
+    }
+  }
+
+  function setItemsPaymentState(payload) {
+    midItemsPaid = Number(payload.additional_paid || 0);
+    midItemsTotal = Number(payload.additional_total || 0);
+    midItemsDue = Number(payload.additional_due || 0);
+    document.getElementById('midItemsTotal').textContent = fmtRp(midItemsTotal);
+    document.getElementById('midItemsPaid').textContent = fmtRp(midItemsPaid);
+    document.getElementById('midItemsDue').textContent = fmtRp(midItemsDue);
+    if (itemsPaidBanner) {
+      if (payload.is_fully_paid && midItemsTotal !== 0) {
+        itemsPaidBanner.textContent = 'Item tambahan sudah lunas' + (payload.metode_pembayaran ? ' (' + payload.metode_pembayaran + ').' : '.');
+        itemsPaidBanner.classList.remove('d-none');
+      } else if (midItemsPaid > 0) {
+        itemsPaidBanner.textContent = 'Sebagian sudah dibayar: ' + fmtRp(midItemsPaid) + '. Sisa: ' + fmtRp(midItemsDue) + '.';
+        itemsPaidBanner.classList.remove('d-none');
+      } else {
+        itemsPaidBanner.classList.add('d-none');
+      }
+    }
+  }
+
+  function openItemsModal(btn) {
+    itemsRentalId = btn.getAttribute('data-rental-id');
+    itemsTokoId = parseInt(btn.getAttribute('data-toko-id') || '0', 10) || 0;
+    quickAddTokoId = itemsTokoId;
+    document.getElementById('itemsMejaLabel').textContent = btn.getAttribute('data-meja-nama') || 'Meja';
+    if (itemsAlert) { itemsAlert.classList.add('d-none'); itemsAlert.textContent = ''; }
+    if (itemsMetodeEl) itemsMetodeEl.value = '';
+    if (itemsBuktiEl) itemsBuktiEl.value = '';
+    if (itemsJumlahBayarEl) { itemsJumlahBayarEl.value = ''; itemsJumlahBayarEl.dataset.auto = '1'; }
+    filterItemRows('#midItemsTable', itemsTokoId);
+    resetQtyInTable('.mid-item-qty', '.mid-item-line-total');
+    document.getElementById('itemsEmpty')?.classList.toggle('d-none', masterItems.length > 0);
+    itemsModal?.show();
+
+    fetch(routes.items(itemsRentalId), { headers: { Accept: 'application/json' } })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+      .then(function (r) {
+        if (!r.ok) return;
+        applyQtyToTable('.mid-item-qty', '.mid-item-line-total', r.body.items || []);
+        setItemsPaymentState(r.body);
+        if (itemsJumlahBayarEl) {
+          itemsJumlahBayarEl.value = String(Math.round(Number(r.body.additional_total || 0)));
+          itemsJumlahBayarEl.dataset.auto = '1';
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('midItemsTable')?.addEventListener('input', function (e) {
+    const inp = e.target.closest('.mid-item-qty');
+    if (!inp) return;
+    const row = inp.closest('tr');
+    const qty = parseInt(inp.value, 10) || 0;
+    const cell = row?.querySelector('.mid-item-line-total');
+    if (cell) cell.textContent = fmtRp(additionalLineSubtotal(row, qty));
+    updateMidItemsLocalTotal();
+  });
+
+  itemsJumlahBayarEl?.addEventListener('input', function () {
+    itemsJumlahBayarEl.dataset.auto = '0';
+  });
+
+  function showItemsAlert(msg) {
+    if (!itemsAlert) return;
+    itemsAlert.textContent = msg || 'Terjadi kesalahan.';
+    itemsAlert.classList.remove('d-none');
+  }
+
+  document.getElementById('itemsSaveBtn')?.addEventListener('click', function () {
+    if (!itemsRentalId) return;
+    const btn = this;
+    btn.disabled = true;
+    fetch(routes.items(itemsRentalId), {
+      method: 'PUT',
+      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ additional_items: collectQtyFromTable('.mid-item-qty') }),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) {
+          const msg = r.status === 422 && r.body?.errors
+            ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+            : (r.body?.message || 'Gagal menyimpan item.');
+          showItemsAlert(msg);
+          return;
+        }
+        setItemsPaymentState(r.body);
+        AppToast.show(r.body?.message || 'Item disimpan.', 'success');
+      })
+      .catch(function () {
+        btn.disabled = false;
+        showItemsAlert('Jaringan bermasalah.');
+      });
+  });
+
+  document.getElementById('itemsSavePayBtn')?.addEventListener('click', function () {
+    if (!itemsRentalId) return;
+    const metode = itemsMetodeEl?.value || '';
+    const jumlah = parseFloat(itemsJumlahBayarEl?.value ?? '');
+    if (!metode) {
+      showItemsAlert('Pilih metode pembayaran untuk bayar item sekarang.');
+      return;
+    }
+    if (!Number.isFinite(jumlah) || jumlah < 0) {
+      showItemsAlert('Jumlah bayar wajib diisi.');
+      return;
+    }
+    const btn = this;
+    btn.disabled = true;
+    const fd = new FormData();
+    fd.append('additional_items', JSON.stringify(collectQtyFromTable('.mid-item-qty')));
+    fd.append('metode_pembayaran', metode);
+    fd.append('jumlah_bayar', String(jumlah));
+    if (itemsBuktiEl?.files?.length) fd.append('bukti', itemsBuktiEl.files[0]);
+
+    fetch(routes.itemsPay(itemsRentalId), {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' },
+      body: fd,
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) {
+          const msg = r.status === 422 && r.body?.errors
+            ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+            : (r.body?.message || 'Gagal membayar item.');
+          showItemsAlert(msg);
+          return;
+        }
+        applyQtyToTable('.mid-item-qty', '.mid-item-line-total', r.body.items || []);
+        setItemsPaymentState(r.body);
+        AppToast.show(r.body?.message || 'Pembayaran item tersimpan.', 'success');
+        setTimeout(function () { window.location.reload(); }, 900);
+      })
+      .catch(function () {
+        btn.disabled = false;
+        showItemsAlert('Jaringan bermasalah.');
+      });
+  });
+
+  function syncCheckoutJumlahDefault() {
+    if (checkoutJumlahBayarEl && (checkoutJumlahBayarEl.value === '' || checkoutJumlahBayarEl.dataset.auto === '1')) {
+      checkoutJumlahBayarEl.value = String(Math.round(checkoutTotalDue));
+      checkoutJumlahBayarEl.dataset.auto = '1';
+    }
+  }
 
   function openCheckin(btn) {
     checkinMeja = {
@@ -464,26 +961,33 @@
     checkoutRentalId = btn.getAttribute('data-rental-id');
     checkoutEndedAt = Math.floor(Date.now() / 1000);
     checkoutGrandTotal = 0;
+    checkoutTotalDue = 0;
+    checkoutPrefillDone = false;
     document.getElementById('checkoutMejaLabel').textContent = btn.getAttribute('data-meja-nama') || 'Meja';
     const tokoId = parseInt(btn.getAttribute('data-toko-id') || '0', 10) || 0;
-    const canSeeAll = @json($canSeeAllToko);
-    if (canSeeAll && tokoId) {
-      document.querySelectorAll('#additionalItemsTable tbody tr[data-item-id]').forEach(function (row) {
-        const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
-        row.classList.toggle('d-none', itemToko !== tokoId);
-      });
-    } else {
-      document.querySelectorAll('#additionalItemsTable tbody tr[data-item-id]').forEach(function (row) {
-        row.classList.remove('d-none');
-      });
-    }
+    checkoutTokoId = tokoId;
+    quickAddTokoId = tokoId;
+    filterItemRows('#additionalItemsTable', tokoId);
     resetAdditionalQty();
     resetCheckoutPaymentFields();
     document.getElementById('checkoutSummary').innerHTML = '<p class="mb-0 text-secondary">Memuat…</p>';
     document.getElementById('checkoutConfirmBtn').disabled = true;
     document.getElementById('additionalItemsEmpty')?.classList.toggle('d-none', masterItems.length > 0);
     checkoutModal?.show();
-    refreshCheckoutPreview();
+
+    fetch(routes.items(checkoutRentalId), { headers: { Accept: 'application/json' } })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+      .then(function (r) {
+        if (r.ok) {
+          applyQtyToTable('.additional-qty', '.additional-line-total', r.body.items || []);
+        }
+        checkoutPrefillDone = true;
+        refreshCheckoutPreview();
+      })
+      .catch(function () {
+        checkoutPrefillDone = true;
+        refreshCheckoutPreview();
+      });
   }
 
   function resetAdditionalQty() {
@@ -496,12 +1000,7 @@
   }
 
   function collectAdditionalItems() {
-    const items = [];
-    document.querySelectorAll('.additional-qty').forEach(function (inp) {
-      const qty = parseInt(inp.value, 10) || 0;
-      if (qty > 0) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
-    });
-    return items;
+    return collectQtyFromTable('.additional-qty');
   }
 
   function refreshCheckoutPreview() {
@@ -531,39 +1030,41 @@
           '<p class="mb-2 font-monospace fs-5 fw-semibold">' + escapeHtml(d.durasi_hms) + '</p>' +
           (d.breakdown_html || '');
         checkoutGrandTotal = Number(d.total_harga) || 0;
+        checkoutTotalDue = Number(d.total_due != null ? d.total_due : checkoutGrandTotal) || 0;
         document.getElementById('checkoutSewaTotal').textContent = fmtRp(d.total_harga_sewa);
         document.getElementById('checkoutAdditionalTotal').textContent = fmtRp(d.total_harga_additional);
+        document.getElementById('checkoutAdditionalPaid').textContent = fmtRp(d.additional_paid || 0);
         document.getElementById('checkoutGrandTotal').textContent = fmtRp(checkoutGrandTotal);
-        if (checkoutJumlahBayarEl && (checkoutJumlahBayarEl.value === '' || checkoutJumlahBayarEl.dataset.auto === '1')) {
-          checkoutJumlahBayarEl.value = String(Math.round(checkoutGrandTotal));
-          checkoutJumlahBayarEl.dataset.auto = '1';
-        }
+        document.getElementById('checkoutTotalDue').textContent = fmtRp(checkoutTotalDue);
+        syncCheckoutJumlahDefault();
         document.getElementById('checkoutConfirmBtn').disabled = false;
 
-        (d.additional_lines || []).forEach(function (line) {
-          const inp = document.querySelector('.additional-qty[data-item-id="' + line.id + '"]');
-          if (inp) {
-            inp.value = String(line.qty);
-            const row = inp.closest('tr');
-            const cell = row?.querySelector('.additional-line-total');
-            if (cell) cell.textContent = fmtRp(line.subtotal);
-          }
-        });
+        if (!checkoutPrefillDone) {
+          (d.additional_lines || []).forEach(function (line) {
+            const inp = document.querySelector('.additional-qty[data-item-id="' + line.id + '"]');
+            if (inp) {
+              inp.value = String(line.qty);
+              const row = inp.closest('tr');
+              const cell = row?.querySelector('.additional-line-total');
+              if (cell) cell.textContent = fmtRp(line.subtotal);
+            }
+          });
+        }
       })
       .catch(function () {
         document.getElementById('checkoutSummary').innerHTML = '<p class="text-danger mb-0">Jaringan bermasalah.</p>';
       });
   }
 
-  document.querySelectorAll('.additional-qty').forEach(function (inp) {
-    inp.addEventListener('input', function () {
-      const row = inp.closest('tr');
-      const qty = parseInt(inp.value, 10) || 0;
-      const cell = row?.querySelector('.additional-line-total');
-      if (cell) cell.textContent = fmtRp(additionalLineSubtotal(row, qty));
-      clearTimeout(previewTimer);
-      previewTimer = setTimeout(refreshCheckoutPreview, 400);
-    });
+  document.getElementById('additionalItemsTable')?.addEventListener('input', function (e) {
+    const inp = e.target.closest('.additional-qty');
+    if (!inp) return;
+    const row = inp.closest('tr');
+    const qty = parseInt(inp.value, 10) || 0;
+    const cell = row?.querySelector('.additional-line-total');
+    if (cell) cell.textContent = fmtRp(additionalLineSubtotal(row, qty));
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(refreshCheckoutPreview, 400);
   });
 
   document.getElementById('checkinForm')?.addEventListener('submit', function (e) {
@@ -646,6 +1147,7 @@
       const fd = new FormData();
       fd.append('ended_at', String(checkoutEndedAt));
       fd.append('additional_items', JSON.stringify(collectAdditionalItems()));
+      fd.append('payment_scope', 'all');
       if (metode) {
         fd.append('metode_pembayaran', metode);
         fd.append('jumlah_bayar', String(jumlahBayar));
@@ -748,9 +1250,125 @@
     checkoutRentalId = null;
     checkoutEndedAt = null;
     checkoutGrandTotal = 0;
+    checkoutTokoId = 0;
     if (checkoutCancelBtn) checkoutCancelBtn.disabled = false;
     resetAdditionalQty();
     resetCheckoutPaymentFields();
+  });
+
+  const quickAddItemModalEl = document.getElementById('quickAddItemModal');
+  const quickAddItemModal = quickAddItemModalEl ? new bootstrap.Modal(quickAddItemModalEl) : null;
+  const quickItemNamaEl = document.getElementById('quick_item_nama');
+  const quickItemHargaEl = document.getElementById('quick_item_harga');
+  const quickAddItemAlert = document.getElementById('quickAddItemAlert');
+  const quickAddItemSaveBtn = document.getElementById('quickAddItemSaveBtn');
+
+  function showQuickAddAlert(msg) {
+    if (!quickAddItemAlert) return;
+    quickAddItemAlert.textContent = msg || 'Terjadi kesalahan.';
+    quickAddItemAlert.classList.remove('d-none');
+  }
+
+  function hideQuickAddAlert() {
+    if (!quickAddItemAlert) return;
+    quickAddItemAlert.classList.add('d-none');
+    quickAddItemAlert.textContent = '';
+  }
+
+  function openQuickAddItemModal() {
+    hideQuickAddAlert();
+    if (quickItemNamaEl) quickItemNamaEl.value = '';
+    if (quickItemHargaEl) quickItemHargaEl.value = '';
+    const tokoId = canSeeAllTokoJs
+      ? (quickAddTokoId || checkoutTokoId || itemsTokoId || 0)
+      : (userIdToko || 0);
+    if (canSeeAllTokoJs && !tokoId) {
+      AppToast.show('Pilih meja / buka sewa terlebih dahulu agar toko item diketahui.', 'danger');
+      return;
+    }
+    if (!canSeeAllTokoJs && !userIdToko) {
+      AppToast.show('Akun belum terhubung ke toko.', 'danger');
+      return;
+    }
+    quickAddItemModal?.show();
+    setTimeout(function () { quickItemNamaEl?.focus(); }, 200);
+  }
+
+  function buildItemRowHtml(item, qtyClass, lineClass) {
+    const harga = Number(item.harga) || 0;
+    return '<tr data-item-id="' + item.id + '" data-item-harga="' + harga + '" data-item-discount="0" data-item-toko="' + (item.id_toko || 0) + '">' +
+      '<td>' + escapeHtml(item.nama) + '</td>' +
+      '<td class="text-end font-monospace small">' + fmtRp(harga) + '</td>' +
+      '<td><input type="number" class="form-control form-control-sm ' + qtyClass + '" min="0" max="999" value="0" data-item-id="' + item.id + '" /></td>' +
+      '<td class="text-end font-monospace small ' + lineClass + '">Rp 0</td>' +
+      '</tr>';
+  }
+
+  function appendMasterItem(item) {
+    masterItems.push(item);
+    const midTbody = document.querySelector('#midItemsTable tbody');
+    const checkoutTbody = document.querySelector('#additionalItemsTable tbody');
+    if (midTbody) midTbody.insertAdjacentHTML('beforeend', buildItemRowHtml(item, 'mid-item-qty', 'mid-item-line-total'));
+    if (checkoutTbody) checkoutTbody.insertAdjacentHTML('beforeend', buildItemRowHtml(item, 'additional-qty', 'additional-line-total'));
+    document.getElementById('itemsEmpty')?.classList.toggle('d-none', masterItems.length > 0);
+    document.getElementById('additionalItemsEmpty')?.classList.toggle('d-none', masterItems.length > 0);
+    filterItemRows('#midItemsTable', itemsTokoId || quickAddTokoId);
+    filterItemRows('#additionalItemsTable', checkoutTokoId || quickAddTokoId);
+  }
+
+  document.getElementById('midTambahItemBtn')?.addEventListener('click', openQuickAddItemModal);
+  document.getElementById('checkoutTambahItemBtn')?.addEventListener('click', openQuickAddItemModal);
+
+  quickAddItemSaveBtn?.addEventListener('click', function () {
+    const nama = (quickItemNamaEl?.value || '').trim();
+    const harga = parseFloat(quickItemHargaEl?.value ?? '');
+    hideQuickAddAlert();
+    if (!nama) {
+      showQuickAddAlert('Nama wajib diisi.');
+      quickItemNamaEl?.focus();
+      return;
+    }
+    if (!Number.isFinite(harga) || harga < 0) {
+      showQuickAddAlert('Harga wajib diisi (min. 0).');
+      quickItemHargaEl?.focus();
+      return;
+    }
+
+    const payload = { nama: nama, harga: harga, is_discount: false };
+    if (canSeeAllTokoJs) {
+      payload.id_toko = quickAddTokoId || checkoutTokoId || itemsTokoId || 0;
+      if (!payload.id_toko) {
+        showQuickAddAlert('Toko tidak diketahui. Buka dari meja yang dipilih.');
+        return;
+      }
+    }
+
+    const btn = quickAddItemSaveBtn;
+    btn.disabled = true;
+    fetch(routes.quickAddItem, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) {
+          const msg = r.status === 422 && r.body?.errors
+            ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+            : (r.body?.message || 'Gagal menambah item.');
+          showQuickAddAlert(msg);
+          return;
+        }
+        if (r.body?.item) appendMasterItem(r.body.item);
+        quickAddItemModal?.hide();
+        AppToast.show(r.body?.message || 'Item ditambahkan.', 'success');
+        if (checkoutRentalId) refreshCheckoutPreview();
+      })
+      .catch(function () {
+        btn.disabled = false;
+        showQuickAddAlert('Jaringan bermasalah.');
+      });
   });
 })();
 </script>

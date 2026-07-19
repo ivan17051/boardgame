@@ -148,6 +148,12 @@
       <div class="summary-box">
         <div class="lbl">Sewa Meja</div>
         <div class="val">{{ $fmtRp($summary['total_sewa_meja']) }}</div>
+        <div class="lbl" style="margin-top:0.25rem;font-weight:400;opacity:0.85;">
+          {{ $fmtRp($summary['total_sewa_meja_gross']) }}
+          @if (($summary['total_discount_item'] ?? 0) > 0)
+            − {{ $fmtRp($summary['total_discount_item']) }}
+          @endif
+        </div>
       </div>
       <div class="summary-box">
         <div class="lbl">Additional (F&amp;B)</div>

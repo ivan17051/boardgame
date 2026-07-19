@@ -28,7 +28,10 @@ class RentalController extends Controller
         $tokos = TokoScope::scopeTokos(Toko::query())
             ->with([
                 'meja' => function ($q) {
-                    $q->orderBy('nama')->with('activeRental');
+                    $q->orderBy('nama')->with([
+                        'activeRental.additionalItems',
+                        'activeRental.cashFlows',
+                    ]);
                 },
             ])
             ->orderBy('nama')
@@ -119,6 +122,250 @@ class RentalController extends Controller
         return response()->json(['message' => 'Check-in berhasil. Meja disewa.']);
     }
 
+    public function items(Rental $rental): JsonResponse
+    {
+        if (! $rental->isActive()) {
+            abort(404);
+        }
+
+        TokoScope::authorizeRental($rental);
+        $rental->loadMissing('additionalItems');
+
+        $lines = $rental->additionalItems->map(function (RentalAdditionalItem $row) {
+            return [
+                'id' => (int) $row->id_additional_item,
+                'nama' => $row->nama,
+                'harga' => (float) $row->harga,
+                'qty' => (int) $row->qty,
+                'subtotal' => (float) $row->subtotal,
+            ];
+        })->values()->all();
+
+        $total = round(array_sum(array_column($lines, 'subtotal')), 3);
+        $payment = RentalPayment::additionalPaymentState($rental, $total);
+
+        return response()->json([
+            'rental_id' => $rental->id,
+            'items' => $lines,
+            'additional_total' => $payment['additional_total'],
+            'additional_paid' => $payment['additional_paid'],
+            'additional_due' => $payment['additional_due'],
+            'is_fully_paid' => $payment['is_fully_paid'],
+            'metode_pembayaran' => $payment['metode_pembayaran'],
+        ]);
+    }
+
+    public function syncItems(Request $request, Rental $rental): JsonResponse
+    {
+        if (! $rental->isActive()) {
+            abort(404);
+        }
+
+        TokoScope::authorizeRental($rental);
+
+        $validated = $request->validate([
+            'additional_items' => ['nullable', 'array'],
+            'additional_items.*.id' => ['required', 'integer'],
+            'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
+        ]);
+
+        $lines = RentalCheckout::resolveAdditionalLines($validated['additional_items'] ?? []);
+        $total = round(array_sum(array_column($lines, 'subtotal')), 3);
+
+        DB::transaction(function () use ($rental, $lines, $total) {
+            $locked = Rental::query()
+                ->whereKey($rental->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
+
+            foreach ($lines as $line) {
+                RentalAdditionalItem::query()->create([
+                    'id_rental' => $locked->id,
+                    'id_additional_item' => $line['id'],
+                    'nama' => $line['nama'],
+                    'harga' => $line['harga'],
+                    'qty' => $line['qty'],
+                    'subtotal' => $line['subtotal'],
+                ]);
+            }
+
+            $locked->update(['total_harga_additional' => $total]);
+
+            RentalPayment::syncAdditionalCashFlow($locked, $total);
+        });
+
+        $fresh = $rental->fresh();
+        $payment = RentalPayment::additionalPaymentState($fresh, $total);
+
+        return response()->json([
+            'message' => 'Item tambahan disimpan.',
+            'items' => $lines,
+            'additional_total' => $payment['additional_total'],
+            'additional_paid' => $payment['additional_paid'],
+            'additional_due' => $payment['additional_due'],
+            'is_fully_paid' => $payment['is_fully_paid'],
+            'metode_pembayaran' => $payment['metode_pembayaran'],
+        ]);
+    }
+
+    public function payItems(Request $request, Rental $rental): JsonResponse
+    {
+        if (! $rental->isActive()) {
+            abort(404);
+        }
+
+        TokoScope::authorizeRental($rental);
+        $rental->loadMissing('meja');
+
+        if ($request->has('additional_items')) {
+            $itemsInput = $request->input('additional_items');
+            if (is_string($itemsInput)) {
+                $decoded = json_decode($itemsInput, true);
+                $request->merge(['additional_items' => is_array($decoded) ? $decoded : []]);
+            }
+        }
+
+        $validated = $request->validate([
+            'additional_items' => ['nullable', 'array'],
+            'additional_items.*.id' => ['required', 'integer'],
+            'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
+            'metode_pembayaran' => ['required', 'string', 'max:100', Rule::in(['tunai', 'transfer', 'qris', 'kartu', 'lainnya'])],
+            'jumlah_bayar' => ['required', 'numeric', 'min:0'],
+            'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
+        ]);
+
+        $result = DB::transaction(function () use ($rental, $request, $validated) {
+            $locked = Rental::query()
+                ->whereKey($rental->id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $locked->loadMissing('meja');
+
+            if (array_key_exists('additional_items', $validated)) {
+                $lines = RentalCheckout::resolveAdditionalLines($validated['additional_items'] ?? []);
+            } else {
+                $lines = $locked->additionalItems()->get()->map(function (RentalAdditionalItem $row) {
+                    return [
+                        'id' => (int) $row->id_additional_item,
+                        'nama' => $row->nama,
+                        'harga' => (float) $row->harga,
+                        'qty' => (int) $row->qty,
+                        'subtotal' => (float) $row->subtotal,
+                        'is_discount' => (float) $row->subtotal < 0,
+                    ];
+                })->all();
+            }
+
+            $total = round(array_sum(array_column($lines, 'subtotal')), 3);
+            if ($total == 0.0 || count($lines) === 0) {
+                throw ValidationException::withMessages([
+                    'additional_items' => ['Tidak ada item tambahan yang bisa dibayar.'],
+                ]);
+            }
+
+            $now = now();
+            $mejaNama = $locked->meja->nama ?? '';
+            $fbLabel = $mejaNama !== ''
+                ? "Additional Item (F&B) — {$locked->nama_customer} · {$mejaNama} (dari sewa #{$locked->id})"
+                : "Additional Item (F&B) — {$locked->nama_customer} (dari sewa #{$locked->id})";
+
+            // New completed rental row (item-only) so paid F&B appears in Data Sewa.
+            $fbRental = Rental::query()->create([
+                'id_meja' => null,
+                'nama_customer' => $locked->nama_customer,
+                'tipe_customer' => $locked->tipe_customer ?? RentalCheckout::CUSTOMER_NON_MEMBER,
+                'waktu_start' => $now,
+                'waktu_end' => $now,
+                'total_durasi' => 0,
+                'harga' => 0,
+                'id_promo' => null,
+                'promo_nama' => null,
+                'promo_hourly_rate' => null,
+                'promo_duration_limit' => null,
+                'promo_jam_mulai' => null,
+                'promo_jam_selesai' => null,
+                'promo_tgl_awal' => null,
+                'promo_tgl_akhir' => null,
+                'total_harga_sewa' => 0,
+                'total_harga_additional' => $total,
+                'total_harga' => $total,
+                'total' => $total,
+                'status' => 'completed',
+                'guest_token' => null,
+            ]);
+
+            foreach ($lines as $line) {
+                RentalAdditionalItem::query()->create([
+                    'id_rental' => $fbRental->id,
+                    'id_additional_item' => $line['id'],
+                    'nama' => $line['nama'],
+                    'harga' => $line['harga'],
+                    'qty' => $line['qty'],
+                    'subtotal' => $line['subtotal'],
+                ]);
+            }
+
+            $uid = auth()->id() ?? 0;
+            $buktiPath = RentalPayment::storeBukti($request->file('bukti'), null);
+
+            CashFlow::query()->create([
+                'id_rental' => $fbRental->id,
+                'tipe_transaksi' => 'income',
+                'kategori_pendapatan' => CashFlow::KATEGORI_ADDITIONAL_FB,
+                'metode_pembayaran' => $validated['metode_pembayaran'],
+                'total' => $total,
+                'jumlah_bayar' => (float) $validated['jumlah_bayar'],
+                'keterangan' => $fbLabel,
+                'waktu_pembayaran' => $now,
+                'bukti_transaksi' => $buktiPath,
+                'idc' => $uid,
+                'idm' => $uid,
+                'doc' => $now,
+                'dom' => $now,
+            ]);
+
+            $fbRental->update([
+                'metode_pembayaran' => $validated['metode_pembayaran'],
+                'jumlah_bayar' => (float) $validated['jumlah_bayar'],
+                'bukti_transaksi' => $buktiPath,
+                'waktu_pembayaran' => $now,
+            ]);
+
+            // Clear paid items from the active meja rental so checkout won't double-charge.
+            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
+            $locked->update(['total_harga_additional' => 0]);
+
+            CashFlow::query()
+                ->where('id_rental', $locked->id)
+                ->where('kategori_pendapatan', CashFlow::KATEGORI_ADDITIONAL_FB)
+                ->delete();
+
+            return [
+                'lines' => [],
+                'total' => 0.0,
+                'fb_rental_id' => (int) $fbRental->id,
+                'paid_total' => $total,
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Pembayaran item tersimpan sebagai transaksi terpisah (Data Sewa #'.$result['fb_rental_id'].'). Sewa meja masih berjalan.',
+            'items' => [],
+            'additional_total' => 0,
+            'additional_paid' => 0,
+            'additional_due' => 0,
+            'is_fully_paid' => true,
+            'metode_pembayaran' => null,
+            'fb_rental_id' => $result['fb_rental_id'],
+            'paid_total' => $result['paid_total'],
+        ]);
+    }
+
     public function checkoutPreview(Request $request, Rental $rental): JsonResponse
     {
         if (! $rental->isActive()) {
@@ -135,12 +382,18 @@ class RentalController extends Controller
             'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
         ]);
 
+        $itemsInput = $validated['additional_items'] ?? null;
+        if ($itemsInput === null) {
+            $itemsInput = $rental->additionalItems()
+                ->get(['id_additional_item', 'qty'])
+                ->map(function ($row) {
+                    return ['id' => (int) $row->id_additional_item, 'qty' => (int) $row->qty];
+                })
+                ->all();
+        }
+
         $endAt = RentalCheckout::resolveEndTime($rental, $validated['ended_at'] ?? $request->query('ended_at'));
-        $calc = RentalCheckout::computeTotals(
-            $rental,
-            $endAt,
-            $validated['additional_items'] ?? []
-        );
+        $calc = RentalCheckout::computeTotals($rental, $endAt, $itemsInput);
 
         return response()->json($this->checkoutPayload($rental, $endAt, $calc));
     }
@@ -154,8 +407,10 @@ class RentalController extends Controller
         TokoScope::authorizeRental($rental);
 
         $validated = $this->validateCheckoutRequest($request);
+        $paymentScope = $validated['payment_scope'] ?? 'all';
 
         $paymentPayload = [
+            'payment_scope' => $paymentScope,
             'metode_pembayaran' => $validated['metode_pembayaran'] ?? null,
             'jumlah_bayar' => array_key_exists('jumlah_bayar', $validated) && $validated['jumlah_bayar'] !== null
                 ? (float) $validated['jumlah_bayar']
@@ -174,12 +429,18 @@ class RentalController extends Controller
                 abort(404);
             }
 
+            $itemsInput = $validated['additional_items'] ?? null;
+            if ($itemsInput === null) {
+                $itemsInput = $locked->additionalItems()
+                    ->get(['id_additional_item', 'qty'])
+                    ->map(function ($row) {
+                        return ['id' => (int) $row->id_additional_item, 'qty' => (int) $row->qty];
+                    })
+                    ->all();
+            }
+
             $endAt = RentalCheckout::resolveEndTime($locked, $validated['ended_at'] ?? null);
-            $calc = RentalCheckout::computeTotals(
-                $locked,
-                $endAt,
-                $validated['additional_items'] ?? []
-            );
+            $calc = RentalCheckout::computeTotals($locked, $endAt, $itemsInput);
 
             $locked->update([
                 'waktu_end' => $endAt,
@@ -191,6 +452,7 @@ class RentalController extends Controller
                 'status' => 'completed',
             ]);
 
+            RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
             foreach ($calc['additional_lines'] as $line) {
                 RentalAdditionalItem::query()->create([
                     'id_rental' => $locked->id,
@@ -207,16 +469,10 @@ class RentalController extends Controller
                 ->lockForUpdate()
                 ->update(['status' => 'active']);
 
-            $this->createIncomeCashFlows($locked, $endAt, $calc);
+            $this->syncIncomeCashFlows($locked, $endAt, $calc);
 
             if (! empty($paymentPayload['metode_pembayaran']) && $paymentPayload['jumlah_bayar'] !== null) {
-                RentalPayment::saveOnRental(
-                    $locked,
-                    $paymentPayload['metode_pembayaran'],
-                    $paymentPayload['jumlah_bayar'],
-                    $paymentPayload['bukti'],
-                    $endAt
-                );
+                $this->applyCheckoutPayment($locked, $calc, $paymentPayload, $endAt);
             }
 
             return [
@@ -278,6 +534,7 @@ class RentalController extends Controller
             'additional_items' => ['nullable', 'array'],
             'additional_items.*.id' => ['required', 'integer'],
             'additional_items.*.qty' => ['required', 'integer', 'min:1', 'max:999'],
+            'payment_scope' => ['nullable', Rule::in(['all', 'sewa', 'additional'])],
             'metode_pembayaran' => ['nullable', 'string', 'max:100', Rule::in(['tunai', 'transfer', 'qris', 'kartu', 'lainnya'])],
             'jumlah_bayar' => ['nullable', 'numeric', 'min:0'],
             'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
@@ -291,6 +548,10 @@ class RentalController extends Controller
                     'jumlah_bayar' => ['Jumlah bayar wajib diisi jika metode pembayaran dipilih.'],
                 ]);
             }
+        }
+
+        if (empty($validated['payment_scope'])) {
+            $validated['payment_scope'] = 'all';
         }
 
         return $validated;
@@ -378,6 +639,12 @@ class RentalController extends Controller
      */
     private function checkoutPayload(Rental $rental, CarbonInterface $endAt, array $calc): array
     {
+        $dues = RentalPayment::checkoutDues(
+            $rental,
+            (float) $calc['total_harga_sewa'],
+            (float) $calc['total_harga_additional']
+        );
+
         return [
             'rental_id' => $rental->id,
             'ended_at' => $endAt->getTimestamp(),
@@ -403,6 +670,11 @@ class RentalController extends Controller
             'total_harga_additional_formatted' => number_format($calc['total_harga_additional'], 0, ',', '.'),
             'total_harga' => $calc['total_harga'],
             'total_harga_formatted' => number_format($calc['total_harga'], 0, ',', '.'),
+            'sewa_due' => $dues['sewa_due'],
+            'additional_due' => $dues['additional_due'],
+            'total_due' => $dues['total_due'],
+            'additional_paid' => $dues['additional_paid'],
+            'sewa_paid' => $dues['sewa_paid'],
             'breakdown_html' => $calc['breakdown_html'],
             'additional_lines' => $calc['additional_lines'],
         ];
@@ -411,7 +683,7 @@ class RentalController extends Controller
     /**
      * @param  array<string, mixed>  $calc
      */
-    private function createIncomeCashFlows(Rental $rental, CarbonInterface $endAt, array $calc): void
+    private function syncIncomeCashFlows(Rental $rental, CarbonInterface $endAt, array $calc): void
     {
         $rental->loadMissing('meja.toko');
         $mejaNama = $rental->meja->nama ?? 'Meja';
@@ -423,32 +695,133 @@ class RentalController extends Controller
         $uid = auth()->id() ?? 0;
         $now = $endAt;
 
-        CashFlow::query()->create([
-            'id_rental' => $rental->id,
-            'tipe_transaksi' => 'income',
-            'kategori_pendapatan' => CashFlow::KATEGORI_SEWA_MEJA,
-            'total' => $calc['total_harga_sewa'],
-            'keterangan' => $deskripsiSewa,
-            'waktu_pembayaran' => $now,
-            'idc' => $uid,
-            'idm' => $uid,
-            'doc' => $now,
-            'dom' => $now,
-        ]);
-
-        if ($calc['total_harga_additional'] != 0) {
+        $sewaFlow = RentalPayment::findCashFlow($rental, CashFlow::KATEGORI_SEWA_MEJA);
+        if (! $sewaFlow) {
             CashFlow::query()->create([
                 'id_rental' => $rental->id,
                 'tipe_transaksi' => 'income',
-                'kategori_pendapatan' => CashFlow::KATEGORI_ADDITIONAL_FB,
-                'total' => $calc['total_harga_additional'],
-                'keterangan' => "Additional Item (F&B) — {$rental->nama_customer} · {$mejaNama}",
+                'kategori_pendapatan' => CashFlow::KATEGORI_SEWA_MEJA,
+                'total' => $calc['total_harga_sewa'],
+                'keterangan' => $deskripsiSewa,
                 'waktu_pembayaran' => $now,
                 'idc' => $uid,
                 'idm' => $uid,
                 'doc' => $now,
                 'dom' => $now,
             ]);
+        } else {
+            $sewaFlow->update([
+                'total' => $calc['total_harga_sewa'],
+                'keterangan' => $deskripsiSewa,
+                'idm' => $uid,
+                'dom' => $now,
+            ]);
+        }
+
+        RentalPayment::syncAdditionalCashFlow(
+            $rental,
+            (float) $calc['total_harga_additional'],
+            "Additional Item (F&B) — {$rental->nama_customer} · {$mejaNama}",
+            false,
+            null,
+            null,
+            null,
+            $now
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $calc
+     * @param  array<string, mixed>  $paymentPayload
+     */
+    private function applyCheckoutPayment(
+        Rental $rental,
+        array $calc,
+        array $paymentPayload,
+        CarbonInterface $endAt
+    ): void {
+        $scope = $paymentPayload['payment_scope'] ?? 'all';
+        $metode = (string) $paymentPayload['metode_pembayaran'];
+        $jumlah = (float) $paymentPayload['jumlah_bayar'];
+        $bukti = $paymentPayload['bukti'] ?? null;
+
+        $dues = RentalPayment::checkoutDues(
+            $rental,
+            (float) $calc['total_harga_sewa'],
+            (float) $calc['total_harga_additional']
+        );
+
+        $buktiPath = null;
+        if ($bukti) {
+            $buktiPath = RentalPayment::storeBukti($bukti, null);
+        }
+
+        $paySewa = in_array($scope, ['all', 'sewa'], true) && $dues['sewa_due'] > 0;
+        $payAdditional = in_array($scope, ['all', 'additional'], true) && $dues['additional_due'] > 0;
+
+        if ($scope === 'additional' && $dues['additional_due'] <= 0) {
+            throw ValidationException::withMessages([
+                'payment_scope' => ['Item tambahan sudah lunas / tidak ada tagihan item.'],
+            ]);
+        }
+
+        if ($scope === 'sewa' && $dues['sewa_due'] <= 0) {
+            throw ValidationException::withMessages([
+                'payment_scope' => ['Sewa meja sudah lunas.'],
+            ]);
+        }
+
+        if ($paySewa) {
+            $sewaFlow = RentalPayment::findCashFlow($rental, CashFlow::KATEGORI_SEWA_MEJA);
+            if ($sewaFlow) {
+                RentalPayment::applyPaymentToCashFlow(
+                    $sewaFlow,
+                    $metode,
+                    $scope === 'all' ? (float) $calc['total_harga_sewa'] : $jumlah,
+                    null,
+                    $buktiPath,
+                    $endAt
+                );
+            }
+        }
+
+        if ($payAdditional) {
+            $addFlow = RentalPayment::findCashFlow($rental, CashFlow::KATEGORI_ADDITIONAL_FB);
+            if ($addFlow) {
+                $payAmount = $scope === 'additional'
+                    ? ($dues['additional_paid'] + $dues['additional_due'])
+                    : (float) $calc['total_harga_additional'];
+                RentalPayment::applyPaymentToCashFlow(
+                    $addFlow,
+                    $metode,
+                    $payAmount,
+                    null,
+                    $buktiPath,
+                    $endAt
+                );
+            }
+        }
+
+        // Rental-level payment snapshot for compatibility
+        $rentalJumlah = $jumlah;
+        if ($scope === 'all') {
+            $rentalJumlah = $dues['total_due'] > 0 ? $jumlah : (float) $calc['total_harga'];
+        } elseif ($scope === 'sewa') {
+            $rentalJumlah = $jumlah;
+        }
+
+        $existingMetode = $rental->metode_pembayaran;
+        $shouldWriteRental = $paySewa || ($scope === 'all' && $dues['total_due'] > 0);
+        if ($shouldWriteRental || ($scope === 'all' && ! $existingMetode)) {
+            $rental->update([
+                'metode_pembayaran' => $metode,
+                'jumlah_bayar' => $rentalJumlah,
+                'bukti_transaksi' => $buktiPath ?? $rental->bukti_transaksi,
+                'waktu_pembayaran' => $endAt,
+                'total' => (float) $calc['total_harga'],
+            ]);
+        } elseif ($scope === 'additional' && $buktiPath && ! $rental->bukti_transaksi) {
+            // keep rental payment fields as-is when only F&B paid
         }
     }
 }

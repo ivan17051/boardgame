@@ -126,6 +126,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/sewa', [RentalController::class, 'store'])->name('rental.store');
     Route::get('/sewa/manual', [ManualRentalController::class, 'index'])->name('rental.manual.index');
     Route::post('/sewa/manual', [ManualRentalController::class, 'store'])->name('rental.manual.store');
+    Route::post('/additional-items/quick', [AdditionalItemController::class, 'quickStore'])
+        ->name('additional-items.quick-store');
     Route::get('/sewa/riwayat', [RentalHistoryController::class, 'index'])->name('rental.history.index');
     Route::get('/sewa/riwayat/data', [RentalHistoryController::class, 'data'])->name('rental.history.data');
     Route::get('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'show'])->name('rental.history.show');
@@ -135,11 +137,13 @@ Route::middleware('auth')->group(function () {
         ->name('rental.history.destroy');
     Route::get('/sewa/{rental}/invoice', [RentalController::class, 'invoice'])->name('rental.invoice');
     Route::get('/sewa/{rental}/bukti', [RentalController::class, 'showBukti'])->name('rental.bukti');
+    Route::get('/sewa/{rental}/items', [RentalController::class, 'items'])->name('rental.items.index');
+    Route::put('/sewa/{rental}/items', [RentalController::class, 'syncItems'])->name('rental.items.sync');
+    Route::post('/sewa/{rental}/items/pay', [RentalController::class, 'payItems'])->name('rental.items.pay');
     Route::match(['get', 'post'], '/sewa/{rental}/checkout-preview', [RentalController::class, 'checkoutPreview'])->name('rental.checkout-preview');
 
     Route::post('/sewa/{rental}/checkout', [RentalController::class, 'checkout'])->name('rental.checkout');
     Route::delete('/sewa/{rental}/cancel', [RentalController::class, 'cancel'])->name('rental.cancel');
-
     Route::get('/cashflow/laporan', [CashFlowController::class, 'report'])->name('cashflow.report');
     Route::get('/cashflow/{cashFlow}/invoice', [CashFlowController::class, 'invoice'])->name('cashflow.invoice');
     Route::get('/cashflow', [CashFlowController::class, 'index'])->name('cashflow.index');

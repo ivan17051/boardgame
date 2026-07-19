@@ -68,6 +68,63 @@ class AdditionalItemController extends Controller
         return response()->json(['message' => 'Item tambahan ditambahkan.']);
     }
 
+    /**
+     * Quick-create from kasir / input manual (non-discount only).
+     * Toko: logged-in user toko; admin may pass id_toko from current meja context.
+     */
+    public function quickStore(Request $request): JsonResponse
+    {
+        $canAssignAnyToko = TokoScope::canSeeAll();
+
+        $validated = $request->validate([
+            'nama' => ['required', 'string', 'max:255'],
+            'harga' => ['required', 'numeric', 'min:0'],
+            'id_toko' => $canAssignAnyToko
+                ? ['required', 'integer', 'min:1', Rule::exists('m_toko', 'id')]
+                : ['nullable'],
+        ]);
+
+        $idToko = $canAssignAnyToko
+            ? (int) $validated['id_toko']
+            : TokoScope::userIdToko();
+
+        if ($idToko < 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'id_toko' => ['Toko tidak tersedia. Pilih meja terlebih dahulu atau hubungi admin.'],
+            ]);
+        }
+
+        if (! $canAssignAnyToko) {
+            TokoScope::authorizeToko(Toko::query()->findOrFail($idToko));
+        }
+
+        $now = now();
+        $uid = auth()->id();
+
+        $item = AdditionalItem::query()->create([
+            'id_toko' => $idToko,
+            'nama' => $validated['nama'],
+            'harga' => $validated['harga'],
+            'is_discount' => false,
+            'is_active' => true,
+            'idc' => $uid,
+            'idm' => $uid,
+            'doc' => $now,
+            'dom' => $now,
+        ]);
+
+        return response()->json([
+            'message' => 'Item tambahan ditambahkan.',
+            'item' => [
+                'id' => (int) $item->id,
+                'id_toko' => (int) $item->id_toko,
+                'nama' => $item->nama,
+                'harga' => (float) $item->harga,
+                'is_discount' => false,
+            ],
+        ]);
+    }
+
     public function update(Request $request, AdditionalItem $additionalItem): JsonResponse
     {
         TokoScope::authorizeAdditionalItem($additionalItem);

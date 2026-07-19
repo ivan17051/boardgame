@@ -151,6 +151,28 @@ class Rental extends Model
      */
     public function kelengkapanStatus(): string
     {
+        $flows = $this->relationLoaded('cashFlows')
+            ? $this->cashFlows
+            : $this->cashFlows()->get();
+
+        if ($flows->isNotEmpty()) {
+            $statuses = $flows->map(function (CashFlow $flow) {
+                return $flow->kelengkapanStatus();
+            });
+
+            if ($statuses->every(function ($s) {
+                return $s === 'lengkap';
+            })) {
+                return 'lengkap';
+            }
+
+            if ($statuses->contains('lengkap') || $statuses->contains('sebagian')) {
+                return 'sebagian';
+            }
+
+            // All cashflows unpaid — fall through to rental-level fields (legacy)
+        }
+
         $hasMetode = ! empty($this->metode_pembayaran);
         $hasBukti = ! empty($this->bukti_transaksi);
         $buktiRequired = $hasMetode && $this->requiresBuktiTransaksi();

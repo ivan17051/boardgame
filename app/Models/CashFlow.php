@@ -82,15 +82,15 @@ class CashFlow extends Model
 
     public function buktiUrl(): ?string
     {
+        if ($this->bukti_transaksi) {
+            return route('cashflow.bukti', $this);
+        }
+
         if ($this->id_rental && $this->rental && $this->rental->bukti_transaksi) {
             return $this->rental->buktiUrl();
         }
 
-        if (! $this->bukti_transaksi) {
-            return null;
-        }
-
-        return route('cashflow.bukti', $this);
+        return null;
     }
 
     public function scopeIncompleteKelengkapan(Builder $query): Builder
@@ -132,20 +132,29 @@ class CashFlow extends Model
      */
     public function kelengkapanStatus(): string
     {
-        $rental = $this->paymentRental();
-        if ($rental) {
-            return $rental->kelengkapanStatus();
-        }
-
         $hasMetode = ! empty($this->metode_pembayaran);
         $hasBukti = ! empty($this->bukti_transaksi);
-        $buktiRequired = $this->requiresBuktiTransaksi();
+        $buktiRequired = $hasMetode && $this->requiresBuktiTransaksi();
 
         if ($hasMetode && (! $buktiRequired || $hasBukti)) {
             return 'lengkap';
         }
 
         if ($hasMetode || $hasBukti) {
+            return 'sebagian';
+        }
+
+        // Legacy: payment was stored on rental only. Evaluate rental fields inline
+        // (do not call $rental->kelengkapanStatus() — that would recurse via cashFlows).
+        $rental = $this->paymentRental();
+        if ($rental && ! empty($rental->metode_pembayaran)) {
+            $rHasBukti = ! empty($rental->bukti_transaksi);
+            $rBuktiRequired = $rental->metode_pembayaran !== 'tunai';
+
+            if (! $rBuktiRequired || $rHasBukti) {
+                return 'lengkap';
+            }
+
             return 'sebagian';
         }
 

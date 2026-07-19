@@ -37,7 +37,7 @@ class RentalHistoryController extends Controller
     public function data(Request $request): JsonResponse
     {
         $baseQuery = TokoScope::scopeRentals(Rental::query())
-            ->with(['meja.toko']);
+            ->with(['meja.toko', 'cashFlows']);
 
         $recordsTotal = (clone $baseQuery)->count();
 

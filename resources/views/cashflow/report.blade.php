@@ -53,33 +53,39 @@
       </div>
     </div>
 
-    <div class="row mb-3">
-      <div class="col-md-3 col-6">
-        <div class="small-box text-bg-success">
+    <div class="row mb-3 cashflow-summary-boxes">
+      <div class="col-md-3 col-6 d-flex">
+        <div class="small-box text-bg-success w-100 mb-0">
           <div class="inner">
             <h3 class="fs-5">{{ $fmtRp($summary['total_income_bayar']) }}</h3>
             <p class="mb-0">Pemasukan ({{ $summary['count_income'] }} transaksi)</p>
           </div>
         </div>
       </div>
-      <div class="col-md-3 col-6">
-        <div class="small-box text-bg-light border">
+      <div class="col-md-3 col-6 d-flex">
+        <div class="small-box text-bg-light border w-100 mb-0">
           <div class="inner text-dark">
             <h3 class="fs-5">{{ $fmtRp($summary['total_income_tagihan']) }}</h3>
             <p class="mb-0">Total tagihan</p>
           </div>
         </div>
       </div>
-      <div class="col-md-3 col-6">
-        <div class="small-box text-bg-primary">
+      <div class="col-md-3 col-6 d-flex">
+        <div class="small-box text-bg-primary w-100 mb-0">
           <div class="inner">
-            <h3 class="fs-5">{{ $fmtRp($summary['total_sewa_meja']) }}</h3>
+            <h3 class="fs-5 mb-1">{{ $fmtRp($summary['total_sewa_meja']) }}</h3>
+            <p class="mb-0 small opacity-75">
+              {{ $fmtRp($summary['total_sewa_meja_gross']) }}
+              @if (($summary['total_discount_item'] ?? 0) > 0)
+                − {{ $fmtRp($summary['total_discount_item']) }}
+              @endif
+            </p>
             <p class="mb-0">Sewa Meja</p>
           </div>
         </div>
       </div>
-      <div class="col-md-3 col-6">
-        <div class="small-box text-bg-info">
+      <div class="col-md-3 col-6 d-flex">
+        <div class="small-box text-bg-info w-100 mb-0">
           <div class="inner">
             <h3 class="fs-5">{{ $fmtRp($summary['total_additional_fb']) }}</h3>
             <p class="mb-0">Additional Item (F&amp;B)</p>
@@ -170,3 +176,19 @@
   </div>
 </div>
 @endsection
+
+@push('styles')
+<style>
+  .cashflow-summary-boxes > [class*="col-"] {
+    margin-bottom: 0.75rem;
+  }
+  .cashflow-summary-boxes .small-box {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .cashflow-summary-boxes .small-box > .inner {
+    flex: 1 1 auto;
+  }
+</style>
+@endpush

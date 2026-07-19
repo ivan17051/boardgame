@@ -51,27 +51,31 @@ class CashFlowController extends Controller
         $dateTo = $validated['date_to'] ?? $dateFrom;
 
         $entries = TokoScope::scopeCashFlows(CashFlow::query())
-            ->with(['rental.meja.toko'])
+            ->with(['rental.meja.toko', 'rental.additionalItems'])
             ->whereDate('waktu_pembayaran', '>=', $dateFrom)
             ->whereDate('waktu_pembayaran', '<=', $dateTo)
             ->orderBy('waktu_pembayaran')
+            ->orderBy('id_rental')
+            ->orderByRaw(
+                "CASE kategori_pendapatan WHEN ? THEN 0 WHEN ? THEN 1 ELSE 2 END",
+                [CashFlow::KATEGORI_SEWA_MEJA, CashFlow::KATEGORI_ADDITIONAL_FB]
+            )
             ->orderBy('id')
             ->get();
 
-        $incomeRows = $entries->filter(fn (CashFlow $row) => $row->isIncome());
-        $expenseRows = $entries->filter(fn (CashFlow $row) => ! $row->isIncome());
+        $incomeRows = $entries->filter(fn (CashFlow $row) => $row->isIncome())->values();
+        $expenseRows = $entries->filter(fn (CashFlow $row) => ! $row->isIncome())->values();
 
         $incomeSummary = $this->summarizeIncomeRows($incomeRows);
+        $categoryTotals = $this->summarizeIncomeByCategory($incomeRows);
 
         $summary = [
             'total_income_tagihan' => $incomeSummary['total_tagihan'],
             'total_income_bayar' => $incomeSummary['total_bayar'],
-            'total_sewa_meja' => (float) $incomeRows
-                ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_SEWA_MEJA)
-                ->sum(fn (CashFlow $r) => (float) $r->total),
-            'total_additional_fb' => (float) $incomeRows
-                ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_ADDITIONAL_FB)
-                ->sum(fn (CashFlow $r) => (float) $r->total),
+            'total_sewa_meja' => $categoryTotals['total_sewa_meja'],
+            'total_sewa_meja_gross' => $categoryTotals['total_sewa_meja_gross'],
+            'total_discount_item' => $categoryTotals['total_discount_item'],
+            'total_additional_fb' => $categoryTotals['total_additional_fb'],
             'total_expense' => (float) $expenseRows->sum(fn (CashFlow $r) => (float) $r->total),
             'count_income' => $incomeSummary['count'],
             'by_metode' => $this->incomeByMetode($incomeRows),
@@ -120,6 +124,68 @@ class CashFlowController extends Controller
             'total_tagihan' => $totalTagihan,
             'total_bayar' => $totalBayar,
             'count' => $count,
+        ];
+    }
+
+    /**
+     * Sewa Meja includes discounts from additional items; Additional F&B is non-discount lines only.
+     *
+     * @param  \Illuminate\Support\Collection<int, CashFlow>  $incomeRows
+     * @return array{total_sewa_meja: float, total_sewa_meja_gross: float, total_discount_item: float, total_additional_fb: float}
+     */
+    private function summarizeIncomeByCategory($incomeRows): array
+    {
+        $totalSewaGross = (float) $incomeRows
+            ->filter(fn (CashFlow $r) => $r->kategori_pendapatan === CashFlow::KATEGORI_SEWA_MEJA)
+            ->sum(fn (CashFlow $r) => (float) $r->total);
+
+        $additionalPositive = 0.0;
+        $additionalDiscount = 0.0;
+        $seenRentals = [];
+
+        foreach ($incomeRows as $row) {
+            if ($row->kategori_pendapatan !== CashFlow::KATEGORI_ADDITIONAL_FB) {
+                continue;
+            }
+
+            if ($row->id_rental) {
+                if (isset($seenRentals[$row->id_rental])) {
+                    continue;
+                }
+                $seenRentals[$row->id_rental] = true;
+
+                $items = $row->rental ? $row->rental->additionalItems : null;
+                if ($items && $items->isNotEmpty()) {
+                    foreach ($items as $item) {
+                        $subtotal = (float) $item->subtotal;
+                        if ($subtotal < 0) {
+                            $additionalDiscount += abs($subtotal);
+                        } else {
+                            $additionalPositive += $subtotal;
+                        }
+                    }
+
+                    continue;
+                }
+            }
+
+            $flowTotal = (float) $row->total;
+            if ($flowTotal < 0) {
+                $additionalDiscount += abs($flowTotal);
+            } else {
+                $additionalPositive += $flowTotal;
+            }
+        }
+
+        $totalSewaGross = round($totalSewaGross, 3);
+        $additionalDiscount = round($additionalDiscount, 3);
+        $additionalPositive = round($additionalPositive, 3);
+
+        return [
+            'total_sewa_meja_gross' => $totalSewaGross,
+            'total_discount_item' => $additionalDiscount,
+            'total_sewa_meja' => round($totalSewaGross - $additionalDiscount, 3),
+            'total_additional_fb' => $additionalPositive,
         ];
     }
 

@@ -111,61 +111,66 @@
             </div>
           </div>
 
-          @if ($additionalItems->isNotEmpty())
-            <hr class="my-4" />
-            <div class="row">
-              <div class="col-md-8">
-                <h6 class="fw-semibold">Item tambahan &amp; diskon</h6>
-                <div class="table-responsive">
-                  <table class="table table-sm align-middle">
-                    <thead class="table-light">
-                      <tr>
-                        <th>Item</th>
-                        <th class="text-end">Nilai</th>
-                        <th style="width:90px">Qty</th>
-                        <th class="text-end">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @foreach ($additionalItems as $item)
-                        <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-discount="{{ $item->is_discount ? '1' : '0' }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
-                          <td>
-                            {{ $item->nama }}
-                            @if ($item->is_discount)
-                              <span class="badge text-bg-warning text-dark ms-1">Diskon</span>
-                            @endif
-                          </td>
-                          <td class="text-end font-monospace small">
-                            @if ($item->is_discount)
-                              − {{ $fmtRp($item->harga) }}
-                            @else
-                              {{ $fmtRp($item->harga) }}
-                            @endif
-                          </td>
-                          <td>
-                            <input type="number" class="form-control form-control-sm manual-additional-qty" min="0" max="999" value="0" data-item-id="{{ $item->id }}" />
-                          </td>
-                          <td class="text-end font-monospace small manual-line-total">Rp 0</td>
-                        </tr>
-                      @endforeach
-                    </tbody>
-                  </table>
-                </div>
+          <hr class="my-4" />
+          <div class="row">
+            <div class="col-md-8">
+              <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <h6 class="fw-semibold mb-0">Item tambahan &amp; diskon</h6>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="manualTambahItemBtn">
+                  <i class="bi bi-plus-lg me-1"></i>Tambah item
+                </button>
               </div>
-              <div class="col-md-4">
-                <h6 class="fw-semibold">Ringkasan &amp; pembayaran</h6>
-                <div class="g-3 mb-3">
-                  <div class="border rounded p-3">
-                    <div class="d-flex justify-content-between small"><span>Sewa meja</span><span class="font-monospace" id="sumSewa">Rp 0</span></div>
-                    <div class="d-flex justify-content-between small" id="sumAdditionalRow"><span>Item tambahan</span><span class="font-monospace" id="sumAdditionalPositive">Rp 0</span></div>
-                    <div class="d-flex justify-content-between small text-danger d-none" id="sumDiscountRow"><span>Diskon</span><span class="font-monospace" id="sumDiscount">− Rp 0</span></div>
-                    <hr class="my-2" />
-                    <div class="d-flex justify-content-between fw-bold"><span>Total</span><span class="font-monospace text-primary" id="sumGrand">Rp 0</span></div>
-                  </div>
+              <div class="table-responsive">
+                <table class="table table-sm align-middle" id="manualAdditionalItemsTable">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Item</th>
+                      <th class="text-end">Nilai</th>
+                      <th style="width:90px">Qty</th>
+                      <th class="text-end">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @forelse ($additionalItems as $item)
+                      <tr data-item-id="{{ $item->id }}" data-item-harga="{{ (float) $item->harga }}" data-item-discount="{{ $item->is_discount ? '1' : '0' }}" data-item-toko="{{ (int) ($item->id_toko ?? 0) }}">
+                        <td>
+                          {{ $item->nama }}
+                          @if ($item->is_discount)
+                            <span class="badge text-bg-warning text-dark ms-1">Diskon</span>
+                          @endif
+                        </td>
+                        <td class="text-end font-monospace small">
+                          @if ($item->is_discount)
+                            − {{ $fmtRp($item->harga) }}
+                          @else
+                            {{ $fmtRp($item->harga) }}
+                          @endif
+                        </td>
+                        <td>
+                          <input type="number" class="form-control form-control-sm manual-additional-qty" min="0" max="999" value="0" data-item-id="{{ $item->id }}" />
+                        </td>
+                        <td class="text-end font-monospace small manual-line-total">Rp 0</td>
+                      </tr>
+                    @empty
+                    @endforelse
+                  </tbody>
+                </table>
+              </div>
+              <nav id="manualAdditionalItemsPager" class="d-none mt-2" aria-label="Pagination item tambahan"></nav>
+            </div>
+            <div class="col-md-4">
+              <h6 class="fw-semibold">Ringkasan &amp; pembayaran</h6>
+              <div class="g-3 mb-3">
+                <div class="border rounded p-3">
+                  <div class="d-flex justify-content-between small"><span>Sewa meja</span><span class="font-monospace" id="sumSewa">Rp 0</span></div>
+                  <div class="d-flex justify-content-between small" id="sumAdditionalRow"><span>Item tambahan</span><span class="font-monospace" id="sumAdditionalPositive">Rp 0</span></div>
+                  <div class="d-flex justify-content-between small text-danger d-none" id="sumDiscountRow"><span>Diskon</span><span class="font-monospace" id="sumDiscount">− Rp 0</span></div>
+                  <hr class="my-2" />
+                  <div class="d-flex justify-content-between fw-bold"><span>Total</span><span class="font-monospace text-primary" id="sumGrand">Rp 0</span></div>
                 </div>
               </div>
             </div>
-          @endif
+          </div>
 
           <hr class="my-4" />
           
@@ -205,14 +210,53 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="quickAddItemModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Tambah item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body">
+        <div id="quickAddItemAlert" class="alert alert-danger d-none small"></div>
+        <div class="mb-3">
+          <label for="quick_item_nama" class="form-label">Nama</label>
+          <input type="text" class="form-control" id="quick_item_nama" maxlength="255" autocomplete="off" />
+        </div>
+        <div class="mb-0">
+          <label for="quick_item_harga" class="form-label">Harga</label>
+          <div class="input-group">
+            <span class="input-group-text">Rp</span>
+            <input type="number" class="form-control" id="quick_item_harga" min="0" step="1" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary" id="quickAddItemSaveBtn">Simpan</button>
+      </div>
+    </div>
+  </div>
+</div>
 @endsection
+
+@push('styles')
+<style>
+  tr.item-toko-hidden,
+  tr.item-page-hidden { display: none !important; }
+</style>
+@endpush
 
 @push('scripts')
 <script>
 (function () {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   const storeUrl = @json(route('rental.manual.store'));
+  const quickAddUrl = @json(route('additional-items.quick-store'));
   const defaultTokoId = @json($defaultTokoId);
+  const canSeeAllToko = @json(\App\Support\TokoScope::canSeeAll());
+  const userIdToko = @json(\App\Support\TokoScope::userIdToko());
   const form = document.getElementById('manualRentalForm');
   const alertEl = document.getElementById('manualAlert');
   const mejaEl = document.getElementById('id_meja');
@@ -220,6 +264,14 @@
   const jumlahBayarEl = document.getElementById('jumlah_bayar');
   const metodeEl = document.getElementById('metode_pembayaran');
   const buktiEl = document.getElementById('bukti');
+  const ITEMS_PER_PAGE = 10;
+  const manualItemsTable = document.getElementById('manualAdditionalItemsTable');
+  const manualItemsPager = document.getElementById('manualAdditionalItemsPager');
+  const quickAddItemModalEl = document.getElementById('quickAddItemModal');
+  const quickAddItemModal = quickAddItemModalEl ? new bootstrap.Modal(quickAddItemModalEl) : null;
+  const quickItemNamaEl = document.getElementById('quick_item_nama');
+  const quickItemHargaEl = document.getElementById('quick_item_harga');
+  const quickAddItemAlert = document.getElementById('quickAddItemAlert');
 
   function fmtRp(n) {
     const val = Number(n || 0);
@@ -322,22 +374,74 @@
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
       const qty = parseInt(inp.value, 10) || 0;
       const row = inp.closest('tr');
-      const hidden = row && row.classList.contains('d-none');
-      if (qty > 0 && !hidden) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
+      if (row && row.classList.contains('item-toko-hidden')) return;
+      if (qty > 0) items.push({ id: parseInt(inp.getAttribute('data-item-id'), 10), qty: qty });
     });
     return items;
   }
 
+  function paginateManualItems(page) {
+    if (!manualItemsTable) return;
+    const allRows = Array.from(manualItemsTable.querySelectorAll('tbody tr[data-item-id]'));
+    const eligible = allRows.filter(function (row) {
+      return !row.classList.contains('item-toko-hidden');
+    });
+    const total = eligible.length;
+    const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+    let current = page != null ? page : (parseInt(manualItemsTable.dataset.page || '1', 10) || 1);
+    current = Math.min(Math.max(1, current), totalPages);
+    manualItemsTable.dataset.page = String(current);
+
+    allRows.forEach(function (row) {
+      row.classList.add('item-page-hidden');
+    });
+    eligible.forEach(function (row, idx) {
+      const onPage = idx >= (current - 1) * ITEMS_PER_PAGE && idx < current * ITEMS_PER_PAGE;
+      row.classList.toggle('item-page-hidden', !onPage);
+    });
+
+    if (!manualItemsPager) return;
+    if (total <= ITEMS_PER_PAGE) {
+      manualItemsPager.classList.add('d-none');
+      manualItemsPager.innerHTML = '';
+      return;
+    }
+
+    manualItemsPager.classList.remove('d-none');
+    manualItemsPager.innerHTML =
+      '<div class="d-flex flex-wrap align-items-center justify-content-between gap-2">' +
+        '<span class="small text-secondary">' +
+          'Menampilkan ' + ((current - 1) * ITEMS_PER_PAGE + 1) + '–' + Math.min(current * ITEMS_PER_PAGE, total) +
+          ' dari ' + total + ' item' +
+        '</span>' +
+        '<div class="btn-group btn-group-sm" role="group">' +
+          '<button type="button" class="btn btn-outline-secondary item-page-prev"' + (current <= 1 ? ' disabled' : '') + '>Sebelumnya</button>' +
+          '<button type="button" class="btn btn-outline-secondary disabled">' + current + ' / ' + totalPages + '</button>' +
+          '<button type="button" class="btn btn-outline-secondary item-page-next"' + (current >= totalPages ? ' disabled' : '') + '>Berikutnya</button>' +
+        '</div>' +
+      '</div>';
+
+    manualItemsPager.querySelector('.item-page-prev')?.addEventListener('click', function () {
+      paginateManualItems(current - 1);
+    });
+    manualItemsPager.querySelector('.item-page-next')?.addEventListener('click', function () {
+      paginateManualItems(current + 1);
+    });
+  }
+
   function syncAdditionalItemsByToko() {
     const canSeeAll = @json(\App\Support\TokoScope::canSeeAll());
-    if (!canSeeAll) return;
+    if (!canSeeAll) {
+      paginateManualItems(1);
+      return;
+    }
     const opt = mejaEl?.selectedOptions[0];
     const tokoId = parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || defaultTokoId || 0;
 
-    document.querySelectorAll('tr[data-item-id][data-item-toko]').forEach(function (row) {
+    document.querySelectorAll('#manualAdditionalItemsTable tr[data-item-id][data-item-toko]').forEach(function (row) {
       const itemToko = parseInt(row.getAttribute('data-item-toko') || '0', 10) || 0;
       const hide = tokoId ? itemToko !== tokoId : false;
-      row.classList.toggle('d-none', hide);
+      row.classList.toggle('item-toko-hidden', hide);
       if (hide) {
         row.querySelectorAll('input.manual-additional-qty').forEach(function (inp) {
           inp.value = '0';
@@ -346,6 +450,7 @@
         if (cell) cell.textContent = fmtRp(0);
       }
     });
+    paginateManualItems(1);
   }
 
   function additionalTotal() {
@@ -353,7 +458,7 @@
     let discount = 0;
     document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
       const row = inp.closest('tr');
-      if (row && row.classList.contains('d-none')) return;
+      if (row && row.classList.contains('item-toko-hidden')) return;
       const qty = parseInt(inp.value, 10) || 0;
       const subtotal = additionalLineSubtotal(row, qty);
       const cell = row?.querySelector('.manual-line-total');
@@ -427,8 +532,9 @@
   document.querySelectorAll('input[name="tipe_customer"]').forEach(function (i) {
     i.addEventListener('change', recalcTotals);
   });
-  document.querySelectorAll('.manual-additional-qty').forEach(function (inp) {
-    inp.addEventListener('input', recalcTotals);
+  document.getElementById('manualAdditionalItemsTable')?.addEventListener('input', function (e) {
+    if (!e.target.closest('.manual-additional-qty')) return;
+    recalcTotals();
   });
   metodeEl?.addEventListener('change', syncBukti);
   jumlahBayarEl?.addEventListener('input', function () { jumlahBayarEl.dataset.auto = '0'; });
@@ -437,6 +543,120 @@
   syncAdditionalItemsByToko();
   syncPromoOptions();
   recalcTotals();
+
+  function currentTokoIdForQuickAdd() {
+    if (!canSeeAllToko) return userIdToko || defaultTokoId || 0;
+    const opt = mejaEl?.selectedOptions[0];
+    return parseInt(opt?.getAttribute('data-toko-id') || '0', 10) || defaultTokoId || 0;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function showQuickAddAlert(msg) {
+    if (!quickAddItemAlert) return;
+    quickAddItemAlert.textContent = msg || 'Terjadi kesalahan.';
+    quickAddItemAlert.classList.remove('d-none');
+  }
+
+  function hideQuickAddAlert() {
+    if (!quickAddItemAlert) return;
+    quickAddItemAlert.classList.add('d-none');
+    quickAddItemAlert.textContent = '';
+  }
+
+  function appendManualItem(item) {
+    if (!manualItemsTable) return;
+    const tbody = manualItemsTable.querySelector('tbody');
+    if (!tbody) return;
+    const harga = Number(item.harga) || 0;
+    tbody.insertAdjacentHTML(
+      'beforeend',
+      '<tr data-item-id="' + item.id + '" data-item-harga="' + harga + '" data-item-discount="0" data-item-toko="' + (item.id_toko || 0) + '">' +
+        '<td>' + escapeHtml(item.nama) + '</td>' +
+        '<td class="text-end font-monospace small">' + fmtRp(harga) + '</td>' +
+        '<td><input type="number" class="form-control form-control-sm manual-additional-qty" min="0" max="999" value="0" data-item-id="' + item.id + '" /></td>' +
+        '<td class="text-end font-monospace small manual-line-total">Rp 0</td>' +
+      '</tr>'
+    );
+    syncAdditionalItemsByToko();
+    recalcTotals();
+  }
+
+  document.getElementById('manualTambahItemBtn')?.addEventListener('click', function () {
+    hideQuickAddAlert();
+    if (quickItemNamaEl) quickItemNamaEl.value = '';
+    if (quickItemHargaEl) quickItemHargaEl.value = '';
+    const tokoId = currentTokoIdForQuickAdd();
+    if (!tokoId) {
+      if (typeof AppToast !== 'undefined') {
+        AppToast.show(canSeeAllToko
+          ? 'Pilih meja terlebih dahulu agar toko item diketahui.'
+          : 'Akun belum terhubung ke toko.', 'danger');
+      } else {
+        alert(canSeeAllToko ? 'Pilih meja terlebih dahulu.' : 'Akun belum terhubung ke toko.');
+      }
+      return;
+    }
+    quickAddItemModal?.show();
+    setTimeout(function () { quickItemNamaEl?.focus(); }, 200);
+  });
+
+  document.getElementById('quickAddItemSaveBtn')?.addEventListener('click', function () {
+    const nama = (quickItemNamaEl?.value || '').trim();
+    const harga = parseFloat(quickItemHargaEl?.value ?? '');
+    hideQuickAddAlert();
+    if (!nama) {
+      showQuickAddAlert('Nama wajib diisi.');
+      quickItemNamaEl?.focus();
+      return;
+    }
+    if (!Number.isFinite(harga) || harga < 0) {
+      showQuickAddAlert('Harga wajib diisi (min. 0).');
+      quickItemHargaEl?.focus();
+      return;
+    }
+    const payload = { nama: nama, harga: harga };
+    if (canSeeAllToko) {
+      payload.id_toko = currentTokoIdForQuickAdd();
+      if (!payload.id_toko) {
+        showQuickAddAlert('Pilih meja terlebih dahulu agar toko item diketahui.');
+        return;
+      }
+    }
+    const btn = this;
+    btn.disabled = true;
+    fetch(quickAddUrl, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+      .then(function (r) {
+        btn.disabled = false;
+        if (!r.ok) {
+          const msg = r.status === 422 && r.body?.errors
+            ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+            : (r.body?.message || 'Gagal menambah item.');
+          showQuickAddAlert(msg);
+          return;
+        }
+        if (r.body?.item) appendManualItem(r.body.item);
+        quickAddItemModal?.hide();
+        if (typeof AppToast !== 'undefined') {
+          AppToast.show(r.body?.message || 'Item ditambahkan.', 'success');
+        }
+      })
+      .catch(function () {
+        btn.disabled = false;
+        showQuickAddAlert('Jaringan bermasalah.');
+      });
+  });
 
   function confirmProceedWithoutBukti(onConfirm) {
     const message = 'Anda belum mengunggah bukti pembayaran. Lanjutkan tanpa bukti? Bukti dapat dilengkapi nanti di menu Data Sewa.';

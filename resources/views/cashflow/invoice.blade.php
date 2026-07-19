@@ -159,20 +159,22 @@
         <th>Tanggal bayar</th>
         <td>{{ $waktuBayar->translatedFormat('d F Y H:i') }}</td>
       </tr>
-      <tr>
-        <th>Meja</th>
-        <td>
-          {{ $rental->meja->nama ?? '—' }}
-          @if ($rental->meja && $rental->meja->toko)
-            ({{ $rental->meja->toko->nama }})
-          @endif
-        </td>
-      </tr>
+      @if ($rental->id_meja)
+        <tr>
+          <th>Meja</th>
+          <td>
+            {{ $rental->meja->nama ?? '—' }}
+            @if ($rental->meja && $rental->meja->toko)
+              ({{ $rental->meja->toko->nama }})
+            @endif
+          </td>
+        </tr>
+      @endif
       <tr>
         <th>Nama customer</th>
         <td>({{ $rental->isMember() ? 'Member' : 'Non-Member' }}) {{ $rental->nama_customer }}</td>
       </tr>
-      @if ($rental->waktu_start && $rental->waktu_end)
+      @if ($rental->id_meja && $rental->waktu_start && $rental->waktu_end)
         <tr>
           <th>Periode sewa</th>
           <td>
@@ -181,17 +183,19 @@
           </td>
         </tr>
       @endif
-      @if ($durasi_hms ?? null)
+      @if ($rental->id_meja && ($durasi_hms ?? null))
         <tr>
           <th>Durasi</th>
           <td>{{ $durasi_hms }} ({{ number_format($billed_hours, 2, ',', '.') }} jam)</td>
         </tr>
       @endif
-      <tr>
-        <th>Tarif normal</th>
-        <td>{{ $fmtRp($rental->harga) }}/jam</td>
-      </tr>
-      @if ($rental->hasPromo())
+      @if ($rental->id_meja)
+        <tr>
+          <th>Tarif normal</th>
+          <td>{{ $fmtRp($rental->harga) }}/jam</td>
+        </tr>
+      @endif
+      @if ($rental->id_meja && $rental->hasPromo())
         <tr>
           <th>Promo</th>
           <td>
@@ -237,21 +241,23 @@
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td>
-            Sewa meja
-            @if ($billed_hours > 0)
-              @if ($rental->hasPromo())
-                <span class="text-secondary">(durasi {{ number_format($billed_hours, 2, ',', '.') }} jam; promo {{ $rental->promo_nama }})</span>
-              @else
-                <span class="text-secondary">({{ number_format($billed_hours, 2, ',', '.') }} jam × {{ $fmtRp($rental->harga) }}/jam)</span>
+        @if ($rental->id_meja)
+          <tr>
+            <td>
+              Sewa meja
+              @if ($billed_hours > 0)
+                @if ($rental->hasPromo())
+                  <span class="text-secondary">(durasi {{ number_format($billed_hours, 2, ',', '.') }} jam; promo {{ $rental->promo_nama }})</span>
+                @else
+                  <span class="text-secondary">({{ number_format($billed_hours, 2, ',', '.') }} jam × {{ $fmtRp($rental->harga) }}/jam)</span>
+                @endif
               @endif
-            @endif
-          </td>
-          <td class="text-end">1</td>
-          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
-          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
-        </tr>
+            </td>
+            <td class="text-end">1</td>
+            <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+            <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+          </tr>
+        @endif
         @foreach ($rental->additionalItems as $line)
           <tr>
             <td>
@@ -274,10 +280,12 @@
         @endforeach
       </tbody>
       <tfoot>
-        <tr>
-          <th colspan="3" class="text-end">Subtotal sewa meja</th>
-          <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
-        </tr>
+        @if ($rental->id_meja)
+          <tr>
+            <th colspan="3" class="text-end">Subtotal sewa meja</th>
+            <td class="text-end font-monospace">{{ $fmtRp($total_harga_sewa) }}</td>
+          </tr>
+        @endif
         @if ($total_harga_additional != 0)
           <tr>
             <th colspan="3" class="text-end">Subtotal item tambahan &amp; diskon</th>
