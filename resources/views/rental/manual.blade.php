@@ -26,7 +26,8 @@
   <div class="container-fluid">
     <div class="callout callout-info mb-4">
       <p class="mb-0">
-        Untuk transaksi yang sudah selesai tanpa timer kasir. Isi <strong>meja</strong> dan <strong>jam ditagihkan</strong> untuk sewa meja, atau kosongkan keduanya (jam = 0) untuk input <strong>item tambahan saja</strong>.
+        Untuk transaksi yang sudah selesai tanpa timer kasir. Isi <strong>meja</strong>, <strong>waktu mulai</strong>, dan <strong>durasi</strong> untuk sewa meja
+        (waktu selesai dihitung otomatis), atau kosongkan meja/durasi untuk input <strong>item tambahan saja</strong>.
       </p>
     </div>
 
@@ -54,7 +55,6 @@
                     data-harga-member="{{ (float) ($m->harga_member ?? $m->harga) }}"
                     data-toko="{{ $m->toko->nama ?? '' }}"
                     data-toko-id="{{ (int) $m->id_toko }}"
-                    {{ $m->status === 'rented' ? 'disabled' : '' }}
                   >
                     {{ $m->toko->nama ?? 'Toko' }} — {{ $m->nama }}
                     @if ($m->status === 'rented') (sedang disewa) @endif
@@ -78,9 +78,19 @@
               <div class="form-text" id="manualRateHint">Tarif: —</div>
             </div>
             <div class="col-md-4">
-              <label for="jam_ditagihkan" class="form-label">Jam ditagihkan</label>
-              <input type="number" class="form-control" id="jam_ditagihkan" name="jam_ditagihkan" min="0" max="999" value="0" />
+              <label for="waktu_start" class="form-label">Waktu mulai</label>
+              <input type="time" class="form-control" id="waktu_start" name="waktu_start" value="{{ now()->format('H:i') }}" />
+              <div class="form-text">Wajib jika ada sewa meja.</div>
+            </div>
+            <div class="col-md-4">
+              <label for="durasi" class="form-label">Durasi (jam)</label>
+              <input type="number" class="form-control" id="durasi" name="durasi" min="0" max="999" value="0" />
               <div class="form-text">0 = tanpa sewa meja. Wajib diisi jika memilih meja.</div>
+            </div>
+            <div class="col-md-4">
+              <label for="waktu_end_display" class="form-label">Waktu selesai</label>
+              <input type="text" class="form-control" id="waktu_end_display" readonly tabindex="-1" value="—" />
+              <div class="form-text">Dihitung dari waktu mulai + durasi.</div>
             </div>
             @if ($rentalPromos->isNotEmpty())
               <div class="col-md-4">
@@ -260,7 +270,10 @@
   const form = document.getElementById('manualRentalForm');
   const alertEl = document.getElementById('manualAlert');
   const mejaEl = document.getElementById('id_meja');
-  const jamEl = document.getElementById('jam_ditagihkan');
+  const tanggalEl = document.getElementById('tanggal');
+  const waktuStartEl = document.getElementById('waktu_start');
+  const durasiEl = document.getElementById('durasi');
+  const waktuEndDisplayEl = document.getElementById('waktu_end_display');
   const jumlahBayarEl = document.getElementById('jumlah_bayar');
   const metodeEl = document.getElementById('metode_pembayaran');
   const buktiEl = document.getElementById('bukti');
@@ -334,10 +347,43 @@
     return promoPart + normalPart;
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function syncWaktuEnd() {
+    if (!waktuEndDisplayEl) return;
+    const tanggal = tanggalEl?.value || '';
+    const start = waktuStartEl?.value || '';
+    const hours = parseInt(durasiEl?.value, 10) || 0;
+    if (!tanggal || !start || hours <= 0) {
+      waktuEndDisplayEl.value = '—';
+      return;
+    }
+    const parts = start.split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) || 0;
+    if (!Number.isFinite(h) || !Number.isFinite(m)) {
+      waktuEndDisplayEl.value = '—';
+      return;
+    }
+    const startDate = new Date(tanggal + 'T' + pad2(h) + ':' + pad2(m) + ':00');
+    if (Number.isNaN(startDate.getTime())) {
+      waktuEndDisplayEl.value = '—';
+      return;
+    }
+    const endDate = new Date(startDate.getTime() + hours * 60 * 60 * 1000);
+    const endTanggal = endDate.getFullYear() + '-' + pad2(endDate.getMonth() + 1) + '-' + pad2(endDate.getDate());
+    const endTime = pad2(endDate.getHours()) + ':' + pad2(endDate.getMinutes());
+    waktuEndDisplayEl.value = endTanggal === tanggal
+      ? endTime
+      : endTanggal.split('-').reverse().join('/') + ' ' + endTime;
+  }
+
   function syncPromoAvailability() {
     const sel = document.getElementById('manual_id_promo');
     if (!sel) return;
-    const hours = parseInt(jamEl?.value, 10) || 0;
+    const hours = parseInt(durasiEl?.value, 10) || 0;
     const disabled = hours <= 0;
     sel.disabled = disabled;
     if (disabled) sel.value = '';
@@ -477,7 +523,7 @@
   }
 
   function recalcTotals() {
-    const hours = parseInt(jamEl?.value, 10) || 0;
+    const hours = parseInt(durasiEl?.value, 10) || 0;
     const rate = hours > 0 ? currentRate() : 0;
     const sewa = computeSewaPrice(hours, rate, selectedPromo());
     const add = additionalTotal();
@@ -505,6 +551,7 @@
       jumlahBayarEl.value = String(Math.round(grand));
       jumlahBayarEl.dataset.auto = '1';
     }
+    syncWaktuEnd();
   }
 
   function syncBukti() {
@@ -525,7 +572,10 @@
     syncPromoOptions();
     recalcTotals();
   });
-  jamEl?.addEventListener('input', function () {
+  tanggalEl?.addEventListener('change', syncWaktuEnd);
+  waktuStartEl?.addEventListener('input', syncWaktuEnd);
+  waktuStartEl?.addEventListener('change', syncWaktuEnd);
+  durasiEl?.addEventListener('input', function () {
     syncPromoOptions();
     recalcTotals();
   });
@@ -543,6 +593,7 @@
   syncAdditionalItemsByToko();
   syncPromoOptions();
   recalcTotals();
+  syncWaktuEnd();
 
   function currentTokoIdForQuickAdd() {
     if (!canSeeAllToko) return userIdToko || defaultTokoId || 0;
@@ -685,17 +736,24 @@
     const jumlahBayar = parseFloat(jumlahBayarEl?.value || '');
     const hasBukti = buktiEl?.files?.length > 0;
 
-    const hours = parseInt(jamEl?.value, 10) || 0;
+    const hours = parseInt(durasiEl?.value, 10) || 0;
+    const waktuStart = (waktuStartEl?.value || '').trim();
     const hasMeja = !!mejaEl?.value;
     const hasAdditional = hasAdditionalItems();
 
     if (hours > 0 && !hasMeja) {
-      alertEl.textContent = 'Pilih meja jika ada jam ditagihkan.';
+      alertEl.textContent = 'Pilih meja jika ada durasi sewa.';
       alertEl.classList.remove('d-none');
       return;
     }
+    if (hours > 0 && !waktuStart) {
+      alertEl.textContent = 'Isi waktu mulai untuk sewa meja.';
+      alertEl.classList.remove('d-none');
+      waktuStartEl?.focus();
+      return;
+    }
     if (hours <= 0 && !hasAdditional) {
-      alertEl.textContent = 'Isi jam ditagihkan atau pilih minimal satu item tambahan.';
+      alertEl.textContent = 'Isi durasi sewa atau pilih minimal satu item tambahan.';
       alertEl.classList.remove('d-none');
       return;
     }
@@ -720,7 +778,8 @@
       if (mejaEl.value) fd.append('id_meja', mejaEl.value);
       fd.append('nama_customer', document.getElementById('nama_customer').value.trim());
       fd.append('tipe_customer', document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member');
-      fd.append('jam_ditagihkan', String(hours));
+      fd.append('durasi', String(hours));
+      if (waktuStart) fd.append('waktu_start', waktuStart);
       const idPromo = document.getElementById('manual_id_promo')?.value;
       if (idPromo) fd.append('id_promo', idPromo);
       fd.append('additional_items', JSON.stringify(collectAdditional()));

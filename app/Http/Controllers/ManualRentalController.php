@@ -62,13 +62,14 @@ class ManualRentalController extends Controller
 
         $validated = $request->validate([
             'tanggal' => ['required', 'date'],
+            'waktu_start' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
             'id_meja' => ['nullable', 'integer', 'exists:m_meja,id'],
             'nama_customer' => ['required', 'string', 'max:255'],
             'tipe_customer' => ['required', Rule::in([
                 RentalCheckout::CUSTOMER_MEMBER,
                 RentalCheckout::CUSTOMER_NON_MEMBER,
             ])],
-            'jam_ditagihkan' => ['nullable', 'integer', 'min:0', 'max:999'],
+            'durasi' => ['nullable', 'integer', 'min:0', 'max:999'],
             'id_promo' => ['nullable', 'integer'],
             'additional_items' => ['nullable', 'array'],
             'additional_items.*.id' => ['required', 'integer'],
@@ -78,12 +79,13 @@ class ManualRentalController extends Controller
             'bukti' => ['nullable', 'file', 'max:5120', 'mimes:jpg,jpeg,png,webp,pdf'],
         ], [
             'tanggal.required' => 'Tanggal transaksi wajib diisi.',
+            'waktu_start.date_format' => 'Format waktu mulai tidak valid.',
             'metode_pembayaran.required' => 'Pilih metode pembayaran.',
             'jumlah_bayar.required' => 'Jumlah bayar wajib diisi.',
         ]);
 
         $result = DB::transaction(function () use ($validated, $request) {
-            $billedHours = max(0, (int) ($validated['jam_ditagihkan'] ?? 0));
+            $billedHours = max(0, (int) ($validated['durasi'] ?? 0));
             $idMeja = isset($validated['id_meja']) ? (int) $validated['id_meja'] : null;
             $additionalLines = RentalCheckout::resolveAdditionalLines($validated['additional_items'] ?? []);
             $hasAdditional = count($additionalLines) > 0;
@@ -91,13 +93,19 @@ class ManualRentalController extends Controller
 
             if (! $hasTableRental && ! $hasAdditional) {
                 throw ValidationException::withMessages([
-                    'jam_ditagihkan' => ['Isi jam ditagihkan atau pilih minimal satu item tambahan.'],
+                    'durasi' => ['Isi durasi sewa atau pilih minimal satu item tambahan.'],
                 ]);
             }
 
             if ($hasTableRental && ! $idMeja) {
                 throw ValidationException::withMessages([
-                    'id_meja' => ['Pilih meja jika ada jam ditagihkan.'],
+                    'id_meja' => ['Pilih meja jika ada durasi sewa.'],
+                ]);
+            }
+
+            if ($hasTableRental && empty($validated['waktu_start'])) {
+                throw ValidationException::withMessages([
+                    'waktu_start' => ['Isi waktu mulai untuk sewa meja.'],
                 ]);
             }
 
@@ -105,19 +113,18 @@ class ManualRentalController extends Controller
             $rate = 0.0;
             $totalHargaSewa = 0.0;
             $totalMinutes = 0;
-            $waktuStart = Carbon::parse($validated['tanggal'])->setTimeFrom(now());
+            $waktuStart = Carbon::parse($validated['tanggal']);
+            if (! empty($validated['waktu_start'])) {
+                $waktuStart->setTimeFromTimeString($validated['waktu_start']);
+            } else {
+                $waktuStart->setTimeFrom(now());
+            }
             $waktuEnd = $waktuStart->copy();
             $promoFields = $this->emptyPromoFields();
 
             if ($idMeja) {
                 $meja = Meja::query()->whereKey($idMeja)->firstOrFail();
                 TokoScope::authorizeMeja($meja);
-
-                if ($hasTableRental && $meja->status === 'rented') {
-                    throw ValidationException::withMessages([
-                        'id_meja' => ['Meja sedang disewa. Selesaikan di Kasir / Meja terlebih dahulu.'],
-                    ]);
-                }
             }
 
             if ($hasTableRental) {
