@@ -56,6 +56,11 @@ class PublicMahjongTournamentController extends Controller
         return view('public.mahjong-standings', [
             'standings' => $data,
             'standingsError' => $result['error'],
+            'canInputScores' => ($status === 'ongoing'),
+            'scoreRoutes' => [
+                'groups' => route('public.mahjong-tournaments.scores.groups', $id),
+                'store' => route('public.mahjong-tournaments.scores.store', $id),
+            ],
         ]);
     }
 
@@ -79,24 +84,23 @@ class PublicMahjongTournamentController extends Controller
         ]);
     }
 
-    /**
-     * @return View|RedirectResponse
-     */
-    public function scores(int $id)
+    public function groups(int $id): JsonResponse
     {
-        $tournament = $this->ongoingTournamentOrAbort($id);
+        $this->ongoingTournamentOrAbort($id);
         $result = BornpadelMahjongTournaments::fetchMahjongGroups($id);
+
+        if ($result['error'] !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['error'],
+            ], 422);
+        }
+
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
-        return view('public.mahjong-scores', [
-            'tournament' => $tournament,
-            'groups' => is_array($data['groups'] ?? null) ? $data['groups'] : [],
-            'groupsError' => $result['error'],
-            'scoreRoutes' => [
-                'store' => route('public.mahjong-tournaments.scores.store', $id),
-                'storeMember' => route('public.mahjong-tournaments.scores.store-member', ['id' => $id, 'member' => '__MEMBER__']),
-                'update' => route('public.mahjong-tournaments.scores.update', ['id' => $id, 'entry' => '__ENTRY__']),
-            ],
+        return response()->json([
+            'success' => true,
+            'data' => $data,
         ]);
     }
 
@@ -132,46 +136,6 @@ class PublicMahjongTournamentController extends Controller
         );
 
         return $this->scoreJson($result, 201);
-    }
-
-    public function storeMemberScore(Request $request, int $id, int $member): JsonResponse
-    {
-        $this->ongoingTournamentOrAbort($id);
-
-        $validated = $request->validate([
-            'poin' => ['required', 'integer'],
-        ], [
-            'poin.required' => 'Poin wajib diisi.',
-            'poin.integer' => 'Poin harus berupa angka.',
-        ]);
-
-        $result = BornpadelMahjongTournaments::storeMemberScore(
-            $id,
-            $member,
-            (int) $validated['poin']
-        );
-
-        return $this->scoreJson($result, 201);
-    }
-
-    public function updateScore(Request $request, int $id, int $entry): JsonResponse
-    {
-        $this->ongoingTournamentOrAbort($id);
-
-        $validated = $request->validate([
-            'poin' => ['required', 'integer'],
-        ], [
-            'poin.required' => 'Poin wajib diisi.',
-            'poin.integer' => 'Poin harus berupa angka.',
-        ]);
-
-        $result = BornpadelMahjongTournaments::updateScoreEntry(
-            $id,
-            $entry,
-            (int) $validated['poin']
-        );
-
-        return $this->scoreJson($result, 200);
     }
 
     public function showRegister(int $id): View

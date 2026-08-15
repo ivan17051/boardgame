@@ -265,14 +265,6 @@
                       <i class="bi bi-person-plus me-1"></i>Daftar
                     </a>
                   @endif
-                  @if ($status === 'ongoing')
-                    <a
-                      href="{{ route('public.mahjong-tournaments.scores', $item['id']) }}"
-                      class="btn btn-sm btn-primary w-100"
-                    >
-                      <i class="bi bi-pencil-square me-1"></i>Input Poin
-                    </a>
-                  @endif
                   @if (in_array($status, ['ongoing', 'completed'], true))
                     <a
                       href="{{ route('public.mahjong-tournaments.standings', $item['id']) }}"

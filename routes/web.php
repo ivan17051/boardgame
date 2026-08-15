@@ -69,23 +69,13 @@ Route::get('/turnamen/mahjong/{id}/peringkat', [PublicMahjongTournamentControlle
 Route::get('/turnamen/mahjong/{id}/juara', [PublicMahjongTournamentController::class, 'winners'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.winners');
-Route::get('/turnamen/mahjong/{id}/poin', [PublicMahjongTournamentController::class, 'scores'])
+Route::get('/turnamen/mahjong/{id}/poin', [PublicMahjongTournamentController::class, 'groups'])
     ->whereNumber('id')
-    ->name('public.mahjong-tournaments.scores');
+    ->name('public.mahjong-tournaments.scores.groups');
 Route::post('/turnamen/mahjong/{id}/poin', [PublicMahjongTournamentController::class, 'storeGroupScores'])
     ->whereNumber('id')
     ->middleware('throttle:30,1')
     ->name('public.mahjong-tournaments.scores.store');
-Route::post('/turnamen/mahjong/{id}/poin/members/{member}', [PublicMahjongTournamentController::class, 'storeMemberScore'])
-    ->whereNumber('id')
-    ->whereNumber('member')
-    ->middleware('throttle:30,1')
-    ->name('public.mahjong-tournaments.scores.store-member');
-Route::patch('/turnamen/mahjong/{id}/poin/{entry}', [PublicMahjongTournamentController::class, 'updateScore'])
-    ->whereNumber('id')
-    ->whereNumber('entry')
-    ->middleware('throttle:30,1')
-    ->name('public.mahjong-tournaments.scores.update');
 
 Route::prefix('guest')->name('guest.')->group(function () {
     Route::get('/sewa', function () {
