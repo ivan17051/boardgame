@@ -1472,7 +1472,76 @@ class BornpadelMahjongTournaments
         return $result;
     }
 
-    private static function formatApiErrorMessage($response): string
+    /**
+     * @param  'GET'|'POST'|'PATCH'|'PUT'  $method
+     * @param  array<string, mixed>  $payload
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    private static function externalJson(
+        string $method,
+        string $path,
+        array $payload = [],
+        int $timeout = 15,
+        string $fallbackError = 'Gagal memproses permintaan ke server turnamen.'
+    ): array {
+        $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
+        $token = config('services.bornpadel.api_token');
+
+        if (! $token || $apiUrl === '') {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => 'Token atau URL API Bornpadel belum dikonfigurasi.',
+            ];
+        }
+
+        try {
+            $request = Http::timeout($timeout)
+                ->acceptJson()
+                ->withToken($token);
+
+            $url = $apiUrl.'/'.ltrim($path, '/');
+            $method = strtoupper($method);
+
+            if ($method !== 'GET') {
+                $request = $request->asJson();
+            }
+
+            if ($method === 'GET') {
+                $response = $request->get($url, $payload);
+            } elseif ($method === 'PATCH') {
+                $response = $request->patch($url, $payload);
+            } elseif ($method === 'PUT') {
+                $response = $request->put($url, $payload);
+            } else {
+                $response = $request->post($url, $payload);
+            }
+
+            if ($response->successful() && $response->json('success') === true) {
+                $data = $response->json('data');
+
+                return [
+                    'data' => is_array($data) ? $data : [],
+                    'message' => $response->json('message'),
+                    'error' => null,
+                ];
+            }
+
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => self::formatApiErrorMessage($response, $fallbackError),
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => 'Tidak dapat terhubung ke server turnamen.',
+            ];
+        }
+    }
+
+    private static function formatApiErrorMessage($response, string $fallback = 'Gagal mendaftarkan pemain.'): string
     {
         $errors = $response->json('errors');
 
@@ -1492,7 +1561,72 @@ class BornpadelMahjongTournaments
             }
         }
 
-        return $response->json('message') ?? 'Gagal mendaftarkan pemain.';
+        return $response->json('message') ?? $fallback;
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    public static function fetchMahjongGroups(int $id): array
+    {
+        $result = self::externalJson(
+            'GET',
+            'tournaments/'.$id.'/mahjong-groups',
+            [],
+            15,
+            'Gagal memuat grup turnamen.'
+        );
+
+        return [
+            'data' => $result['data'],
+            'error' => $result['error'],
+        ];
+    }
+
+    /**
+     * @param  array<int, array{id_grup_member:int, poin:int}>  $scores
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    public static function storeGroupScores(int $id, int $idGrup, array $scores): array
+    {
+        return self::externalJson(
+            'POST',
+            'tournaments/'.$id.'/mahjong-scores',
+            [
+                'id_grup' => $idGrup,
+                'scores' => $scores,
+            ],
+            15,
+            'Gagal menyimpan poin grup.'
+        );
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    public static function storeMemberScore(int $id, int $idGrupMember, int $poin): array
+    {
+        return self::externalJson(
+            'POST',
+            'tournaments/'.$id.'/mahjong-members/'.$idGrupMember.'/scores',
+            ['poin' => $poin],
+            15,
+            'Gagal menyimpan poin pemain.'
+        );
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    public static function updateScoreEntry(int $id, int $entryId, int $poin): array
+    {
+        return self::externalJson(
+            'PATCH',
+            'tournaments/'.$id.'/mahjong-scores/'.$entryId,
+            ['poin' => $poin],
+            15,
+            'Gagal memperbarui poin.'
+        );
     }
 
     /**

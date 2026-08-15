@@ -28,6 +28,12 @@
           <p>Dashboard</p>
         </a>
       </li>
+      <li class="nav-item">
+        <a href="{{ route('home') }}" class="nav-link {{ request()->routeIs('home') || request()->routeIs('public.mahjong-tournaments*') ? 'active' : '' }}">
+          <i class="nav-icon bi bi-trophy-fill"></i>
+          <p>Turnamen</p>
+        </a>
+      </li>
 
       @if (auth()->check() && auth()->user()->isAdmin())
       <li class="nav-header">DATA MASTER</li>

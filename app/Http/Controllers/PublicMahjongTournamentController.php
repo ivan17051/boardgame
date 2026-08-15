@@ -16,10 +16,6 @@ class PublicMahjongTournamentController extends Controller
      */
     public function index(Request $request)
     {
-        if ($request->routeIs('home') && auth()->check()) {
-            return redirect()->route('rental.index');
-        }
-
         $status = $request->query('status');
         $result = BornpadelMahjongTournaments::fetch($status);
 
@@ -81,6 +77,101 @@ class PublicMahjongTournamentController extends Controller
             'success' => true,
             'data' => $data,
         ]);
+    }
+
+    /**
+     * @return View|RedirectResponse
+     */
+    public function scores(int $id)
+    {
+        $tournament = $this->ongoingTournamentOrAbort($id);
+        $result = BornpadelMahjongTournaments::fetchMahjongGroups($id);
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+
+        return view('public.mahjong-scores', [
+            'tournament' => $tournament,
+            'groups' => is_array($data['groups'] ?? null) ? $data['groups'] : [],
+            'groupsError' => $result['error'],
+            'scoreRoutes' => [
+                'store' => route('public.mahjong-tournaments.scores.store', $id),
+                'storeMember' => route('public.mahjong-tournaments.scores.store-member', ['id' => $id, 'member' => '__MEMBER__']),
+                'update' => route('public.mahjong-tournaments.scores.update', ['id' => $id, 'entry' => '__ENTRY__']),
+            ],
+        ]);
+    }
+
+    public function storeGroupScores(Request $request, int $id): JsonResponse
+    {
+        $this->ongoingTournamentOrAbort($id);
+
+        $validated = $request->validate([
+            'id_grup' => ['required', 'integer'],
+            'scores' => ['required', 'array', 'size:4'],
+            'scores.*.id_grup_member' => ['required', 'integer'],
+            'scores.*.poin' => ['required', 'integer'],
+        ], [
+            'id_grup.required' => 'Grup wajib dipilih.',
+            'scores.required' => 'Poin keempat pemain wajib diisi.',
+            'scores.size' => 'Poin harus diisi untuk keempat pemain dalam grup.',
+            'scores.*.id_grup_member.required' => 'Anggota grup wajib dipilih.',
+            'scores.*.poin.required' => 'Poin wajib diisi.',
+            'scores.*.poin.integer' => 'Poin harus berupa angka.',
+        ]);
+
+        $scores = array_map(static function (array $score) {
+            return [
+                'id_grup_member' => (int) $score['id_grup_member'],
+                'poin' => (int) $score['poin'],
+            ];
+        }, $validated['scores']);
+
+        $result = BornpadelMahjongTournaments::storeGroupScores(
+            $id,
+            (int) $validated['id_grup'],
+            $scores
+        );
+
+        return $this->scoreJson($result, 201);
+    }
+
+    public function storeMemberScore(Request $request, int $id, int $member): JsonResponse
+    {
+        $this->ongoingTournamentOrAbort($id);
+
+        $validated = $request->validate([
+            'poin' => ['required', 'integer'],
+        ], [
+            'poin.required' => 'Poin wajib diisi.',
+            'poin.integer' => 'Poin harus berupa angka.',
+        ]);
+
+        $result = BornpadelMahjongTournaments::storeMemberScore(
+            $id,
+            $member,
+            (int) $validated['poin']
+        );
+
+        return $this->scoreJson($result, 201);
+    }
+
+    public function updateScore(Request $request, int $id, int $entry): JsonResponse
+    {
+        $this->ongoingTournamentOrAbort($id);
+
+        $validated = $request->validate([
+            'poin' => ['required', 'integer'],
+        ], [
+            'poin.required' => 'Poin wajib diisi.',
+            'poin.integer' => 'Poin harus berupa angka.',
+        ]);
+
+        $result = BornpadelMahjongTournaments::updateScoreEntry(
+            $id,
+            $entry,
+            (int) $validated['poin']
+        );
+
+        return $this->scoreJson($result, 200);
     }
 
     public function showRegister(int $id): View
@@ -364,6 +455,39 @@ class PublicMahjongTournamentController extends Controller
         }
 
         return $tournament;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ongoingTournamentOrAbort(int $id): array
+    {
+        $tournament = BornpadelMahjongTournaments::findMahjongTournament($id);
+
+        if (! $tournament || ($tournament['status'] ?? null) !== 'ongoing') {
+            abort(404, 'Input poin hanya tersedia untuk turnamen yang sedang berlangsung.');
+        }
+
+        return $tournament;
+    }
+
+    /**
+     * @param  array{data: array<string, mixed>|null, message?: string|null, error: string|null}  $result
+     */
+    private function scoreJson(array $result, int $successStatus = 200): JsonResponse
+    {
+        if ($result['error'] !== null || $result['data'] === null) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['error'] ?? 'Gagal menyimpan poin.',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'] ?? 'Poin berhasil disimpan.',
+            'data' => $result['data'],
+        ], $successStatus);
     }
 
     private function registerSessionKey(int $id): string
