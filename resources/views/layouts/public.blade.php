@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>@yield('title', 'Omahjong')</title>
   <meta name="csrf-token" content="{{ csrf_token() }}" />
+  <link rel="icon" type="image/png" href="{{ asset('public/assets/img/logo.png') }}" />
+
+  @hasSection('og')
+    @yield('og')
+  @else
+    @include('public.partials.og-meta')
+  @endif
+
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" crossorigin="anonymous" />
   <link rel="stylesheet" href="{{ asset('public/css/adminlte.css') }}" />
   <style>

@@ -2,6 +2,25 @@
 
 @section('title', 'Daftar — ' . ($tournament['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong')
 
+@section('og')
+  @include('public.partials.og-meta', [
+    'ogTournament' => $tournament,
+    'ogUrl' => route('public.mahjong-tournaments.register', $tournament['id']),
+    'ogTitle' => 'Daftar ' . ($tournament['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong',
+    'ogDescription' => trim(implode(' · ', array_filter([
+      'Pendaftaran turnamen mahjong',
+      ! empty($tournament['tanggal'])
+        ? \Carbon\Carbon::parse($tournament['tanggal'])->locale('id')->translatedFormat('d F Y')
+        : null,
+      isset($tournament['harga']) && (float) $tournament['harga'] > 0
+        ? 'Rp ' . number_format((float) $tournament['harga'], 0, ',', '.')
+        : 'Gratis',
+    ]))),
+    'ogImage' => $tournament['share_image_url']
+      ?? \App\Support\BornpadelMahjongTournaments::tournamentShareImageUrl($tournament['foto'] ?? null),
+  ])
+@endsection
+
 @push('styles')
 <style>
   .register-card {
@@ -68,6 +87,34 @@
 
       <form method="post" action="{{ route('public.mahjong-tournaments.register.check', $tournament['id']) }}" novalidate>
         @csrf
+
+        @if (! empty($tournament['has_multiple_kategori']))
+          <div class="mb-3">
+            <label for="id_kategori" class="form-label fw-semibold">Kategori <span class="text-danger">*</span></label>
+            <select
+              name="id_kategori"
+              id="id_kategori"
+              class="form-select @error('id_kategori') is-invalid @enderror"
+              required
+            >
+              <option value="" disabled {{ old('id_kategori') ? '' : 'selected' }}>Pilih kategori</option>
+              @foreach (($tournament['kategori'] ?? []) as $kat)
+                <option
+                  value="{{ $kat['id'] }}"
+                  {{ (string) old('id_kategori', $tournament['default_kategori_id'] ?? '') === (string) $kat['id'] ? 'selected' : '' }}
+                >
+                  {{ $kat['nama'] }}
+                </option>
+              @endforeach
+            </select>
+            @error('id_kategori')
+              <div class="invalid-feedback">{{ $message }}</div>
+            @enderror
+          </div>
+        @elseif (! empty($tournament['default_kategori_id']))
+          <input type="hidden" name="id_kategori" value="{{ $tournament['default_kategori_id'] }}" />
+        @endif
+
         <div class="mb-4">
           <x-phone-input
             name="no_hp"

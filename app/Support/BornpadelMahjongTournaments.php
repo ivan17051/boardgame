@@ -745,18 +745,232 @@ class BornpadelMahjongTournaments
      */
     private static function mapTournamentRow($row): array
     {
+        $foto = property_exists($row, 'foto') ? ($row->foto ?? null) : null;
+        $kategoriList = self::listKategoriForTournament((int) $row->id);
+        $defaultKategori = self::pickDefaultKategori($kategoriList);
+
         return [
             'id' => (int) $row->id,
             'nama' => $row->nama,
             'tanggal' => $row->tanggal ?? null,
-            'harga' => $row->harga ?? 0,
+            'harga' => $defaultKategori['harga'] ?? ($row->harga ?? 0),
             'syarat' => $row->syarat ?? null,
             'jenis' => $row->jenis ?? 'mahjong',
             'jenis_label' => 'Mahjong',
             'status' => $row->status ?? null,
-            'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
+            'mahjong_is_final' => (bool) (
+                $defaultKategori['mahjong_is_final']
+                ?? ($row->mahjong_is_final ?? false)
+            ),
+            // Same as Bornpadel guest landing: turnamen status drives the Daftar button.
             'registration_open' => ($row->status ?? null) === 'open',
+            'foto' => $foto,
+            'share_image_url' => self::tournamentShareImageUrl($foto),
+            'kategori' => $kategoriList,
+            'default_kategori_id' => $defaultKategori['id'] ?? null,
+            'has_multiple_kategori' => count($kategoriList) > 1,
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function listKategoriForTournament(int $turnamenId): array
+    {
+        try {
+            if (! Schema::connection('bornpadel')->hasTable('turnamen_kategori')) {
+                return [];
+            }
+
+            return DB::connection('bornpadel')
+                ->table('turnamen_kategori')
+                ->where('id_turnamen', $turnamenId)
+                ->orderBy('urutan')
+                ->orderBy('id')
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'id' => (int) $row->id,
+                        'nama' => $row->nama,
+                        'is_default' => (bool) ($row->is_default ?? false),
+                        'urutan' => (int) ($row->urutan ?? 0),
+                        'harga' => $row->harga ?? 0,
+                        'status' => $row->status ?? null,
+                        'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
+                        'registration_open' => ($row->status ?? null) === 'open',
+                    ];
+                })
+                ->values()
+                ->all();
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $kategoriList
+     * @return array<string, mixed>|null
+     */
+    private static function pickDefaultKategori(array $kategoriList): ?array
+    {
+        if ($kategoriList === []) {
+            return null;
+        }
+
+        foreach ($kategoriList as $kat) {
+            if (! empty($kat['is_default'])) {
+                return $kat;
+            }
+        }
+
+        return $kategoriList[0];
+    }
+
+    /**
+     * @return array{ok: bool, kategori: object|null, error: string|null, retry_via_api?: bool}
+     */
+    private static function resolveKategoriForTournament($connection, int $turnamenId, $idKategori = null, bool $requireOpen = false): array
+    {
+        if (! Schema::connection('bornpadel')->hasTable('turnamen_kategori')) {
+            return [
+                'ok' => true,
+                'kategori' => null,
+                'error' => null,
+            ];
+        }
+
+        $idProvided = $idKategori !== null && $idKategori !== '';
+
+        if ($idProvided) {
+            $kategori = $connection->table('turnamen_kategori')
+                ->where('id_turnamen', $turnamenId)
+                ->where('id', (int) $idKategori)
+                ->first();
+
+            if (! $kategori) {
+                return [
+                    'ok' => false,
+                    'kategori' => null,
+                    'error' => 'Kategori tidak ditemukan untuk turnamen ini.',
+                ];
+            }
+        } else {
+            $count = $connection->table('turnamen_kategori')
+                ->where('id_turnamen', $turnamenId)
+                ->count();
+
+            if ($count > 1) {
+                return [
+                    'ok' => false,
+                    'kategori' => null,
+                    'error' => 'Parameter id_kategori wajib diisi karena turnamen memiliki lebih dari satu kategori.',
+                ];
+            }
+
+            $kategori = $connection->table('turnamen_kategori')
+                ->where('id_turnamen', $turnamenId)
+                ->where('is_default', true)
+                ->first();
+
+            if (! $kategori) {
+                $kategori = $connection->table('turnamen_kategori')
+                    ->where('id_turnamen', $turnamenId)
+                    ->orderBy('urutan')
+                    ->orderBy('id')
+                    ->first();
+            }
+
+            if (! $kategori) {
+                $turnamen = $connection->table('m_turnamen')->where('id', $turnamenId)->first();
+                if (! $turnamen) {
+                    return [
+                        'ok' => false,
+                        'kategori' => null,
+                        'error' => 'Turnamen tidak ditemukan.',
+                        'retry_via_api' => true,
+                    ];
+                }
+
+                $now = now();
+                $kategoriId = (int) $connection->table('turnamen_kategori')->insertGetId([
+                    'id_turnamen' => $turnamenId,
+                    'nama' => 'Umum',
+                    'is_default' => 1,
+                    'urutan' => 1,
+                    'harga' => $turnamen->harga ?? 0,
+                    'maks_peserta' => $turnamen->maks_peserta ?? null,
+                    'status' => in_array($turnamen->status ?? '', ['draft', 'open', 'ongoing', 'completed'], true)
+                        ? $turnamen->status
+                        : 'draft',
+                    'mahjong_is_final' => (bool) ($turnamen->mahjong_is_final ?? false),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+                $kategori = $connection->table('turnamen_kategori')->where('id', $kategoriId)->first();
+            }
+        }
+
+        if ($requireOpen) {
+            $turnamen = $connection->table('m_turnamen')->where('id', $turnamenId)->first();
+            if (! $turnamen || ($turnamen->status ?? null) !== 'open') {
+                return [
+                    'ok' => false,
+                    'kategori' => $kategori,
+                    'error' => 'Pendaftaran turnamen tidak dibuka.',
+                ];
+            }
+        }
+
+        return [
+            'ok' => true,
+            'kategori' => $kategori,
+            'error' => null,
+        ];
+    }
+
+    private static function pesertaQueryForPemain($connection, int $turnamenId, int $pemainId, $idKategori = null)
+    {
+        $query = $connection->table('turnamen_peserta')
+            ->where('id_turnamen', $turnamenId)
+            ->where('id_pemain1', $pemainId);
+
+        if ($idKategori !== null && Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'id_kategori')) {
+            $query->where('id_kategori', (int) $idKategori);
+        }
+
+        return $query;
+    }
+
+    public static function defaultShareImageUrl(): string
+    {
+        return self::absoluteUrl(asset('public/assets/img/logo.png'));
+    }
+
+    public static function tournamentShareImageUrl(?string $foto = null): string
+    {
+        if ($foto) {
+            $normalized = str_replace('\\', '/', ltrim($foto, '/'));
+            $baseUrl = rtrim((string) config('services.bornpadel.public_url'), '/');
+            if ($baseUrl !== '') {
+                return self::absoluteUrl($baseUrl.'/public/'.$normalized);
+            }
+
+            $fromBornpadel = self::bornpadelPublicUrl($foto);
+            if ($fromBornpadel) {
+                return self::absoluteUrl($fromBornpadel);
+            }
+        }
+
+        return self::defaultShareImageUrl();
+    }
+
+    private static function absoluteUrl(string $url): string
+    {
+        if (strpos($url, 'http://') === 0 || strpos($url, 'https://') === 0) {
+            return $url;
+        }
+
+        return url($url);
     }
 
     /**
@@ -781,16 +995,16 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    public static function checkRegistration(int $turnamenId, string $noHp): array
+    public static function checkRegistration(int $turnamenId, string $noHp, $idKategori = null): array
     {
-        $fromDatabase = self::checkRegistrationFromDatabase($turnamenId, $noHp);
+        $fromDatabase = self::checkRegistrationFromDatabase($turnamenId, $noHp, $idKategori);
 
         if ($fromDatabase['error'] === null) {
             return $fromDatabase;
         }
 
         if (! empty($fromDatabase['retry_via_api'])) {
-            return self::checkRegistrationFromApi($turnamenId, $noHp);
+            return self::checkRegistrationFromApi($turnamenId, $noHp, $idKategori);
         }
 
         return $fromDatabase;
@@ -799,7 +1013,7 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null, retry_via_api?: bool}
      */
-    private static function checkRegistrationFromDatabase(int $turnamenId, string $noHp): array
+    private static function checkRegistrationFromDatabase(int $turnamenId, string $noHp, $idKategori = null): array
     {
         $fail = static function (string $message, bool $retryViaApi = false): array {
             return [
@@ -824,6 +1038,13 @@ class BornpadelMahjongTournaments
                 return $fail('Turnamen tidak ditemukan.', true);
             }
 
+            $resolved = self::resolveKategoriForTournament($connection, $turnamenId, $idKategori, false);
+            if (! $resolved['ok']) {
+                return $fail($resolved['error'] ?? 'Kategori tidak valid.', ! empty($resolved['retry_via_api']));
+            }
+            $kategori = $resolved['kategori'];
+            $kategoriId = $kategori ? (int) $kategori->id : null;
+
             $pemain = $connection->table('m_pemain')->where('no_hp', $noHp)->first();
 
             if (! $pemain) {
@@ -831,6 +1052,7 @@ class BornpadelMahjongTournaments
                     'data' => [
                         'registered' => false,
                         'turnamen_id' => $turnamenId,
+                        'kategori_id' => $kategoriId,
                         'no_hp' => $noHp,
                         'pemain_exists' => false,
                         'pemain' => null,
@@ -840,18 +1062,13 @@ class BornpadelMahjongTournaments
                 ];
             }
 
-            $peserta = $connection->table('turnamen_peserta')
-                ->where('id_turnamen', $turnamenId)
-                ->where(function ($query) use ($pemain) {
-                    $query->where('id_pemain1', $pemain->id)
-                        ->orWhere('id_pemain2', $pemain->id);
-                })
-                ->first();
+            $peserta = self::pesertaQueryForPemain($connection, $turnamenId, (int) $pemain->id, $kategoriId)->first();
 
             return [
                 'data' => [
                     'registered' => $peserta !== null,
                     'turnamen_id' => $turnamenId,
+                    'kategori_id' => $kategoriId,
                     'no_hp' => $pemain->no_hp,
                     'pemain_exists' => true,
                     'pemain' => [
@@ -864,6 +1081,7 @@ class BornpadelMahjongTournaments
                     'registration' => $peserta ? [
                         'peserta_id' => (int) $peserta->id,
                         'status' => $peserta->status,
+                        'sumber' => $peserta->sumber ?? null,
                         'bukti_bayar' => $peserta->bukti_bayar ?? null,
                         'bukti_bayar_url' => self::paymentReceiptUrl($peserta->bukti_bayar ?? null),
                         'paired_at' => $peserta->paired_at ?? null,
@@ -879,7 +1097,7 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    private static function checkRegistrationFromApi(int $turnamenId, string $noHp): array
+    private static function checkRegistrationFromApi(int $turnamenId, string $noHp, $idKategori = null): array
     {
         $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
         $token = config('services.bornpadel.api_token');
@@ -892,13 +1110,18 @@ class BornpadelMahjongTournaments
         }
 
         try {
+            $params = array_filter([
+                'id_turnamen' => $turnamenId,
+                'no_hp' => $noHp,
+                'id_kategori' => $idKategori,
+            ], static function ($value) {
+                return $value !== null && $value !== '';
+            });
+
             $response = Http::timeout(15)
                 ->acceptJson()
                 ->withToken($token)
-                ->get($apiUrl.'/registration-check', [
-                    'id_turnamen' => $turnamenId,
-                    'no_hp' => $noHp,
-                ]);
+                ->get($apiUrl.'/registration-check', $params);
 
             if ($response->successful() && $response->json('success') === true) {
                 return [
@@ -1048,6 +1271,7 @@ class BornpadelMahjongTournaments
         try {
             $requestPayload = array_filter([
                 'id_turnamen' => $payload['id_turnamen'] ?? null,
+                'id_kategori' => $payload['id_kategori'] ?? null,
                 'no_hp' => $payload['no_hp'] ?? null,
                 'peserta_id' => $payload['peserta_id'] ?? null,
             ], static function ($value) {
@@ -1100,6 +1324,7 @@ class BornpadelMahjongTournaments
 
         $turnamenId = (int) ($payload['id_turnamen'] ?? 0);
         $noHp = trim((string) ($payload['no_hp'] ?? ''));
+        $idKategori = $payload['id_kategori'] ?? null;
 
         if ($turnamenId <= 0 || $noHp === '') {
             return null;
@@ -1115,13 +1340,12 @@ class BornpadelMahjongTournaments
             return null;
         }
 
-        return $connection->table('turnamen_peserta')
-            ->where('id_turnamen', $turnamenId)
-            ->where(function ($query) use ($pemain) {
-                $query->where('id_pemain1', $pemain->id)
-                    ->orWhere('id_pemain2', $pemain->id);
-            })
-            ->first();
+        $resolved = self::resolveKategoriForTournament($connection, $turnamenId, $idKategori, false);
+        $kategoriId = ($resolved['ok'] && $resolved['kategori'])
+            ? (int) $resolved['kategori']->id
+            : null;
+
+        return self::pesertaQueryForPemain($connection, $turnamenId, (int) $pemain->id, $kategoriId)->first();
     }
 
     private static function storePaymentReceiptFile(UploadedFile $file): string
@@ -1275,6 +1499,18 @@ class BornpadelMahjongTournaments
                 return $fail('Pendaftaran turnamen tidak dibuka.');
             }
 
+            $resolved = self::resolveKategoriForTournament(
+                $connection,
+                $turnamenId,
+                $payload['id_kategori'] ?? null,
+                true
+            );
+            if (! $resolved['ok']) {
+                return $fail($resolved['error'] ?? 'Kategori tidak valid.', ! empty($resolved['retry_via_api']));
+            }
+            $kategori = $resolved['kategori'];
+            $kategoriId = $kategori ? (int) $kategori->id : null;
+
             $nama = trim((string) ($payload['nama'] ?? ''));
             if ($nama === '') {
                 return $fail('Nama wajib diisi.');
@@ -1313,16 +1549,15 @@ class BornpadelMahjongTournaments
             $existingPemain = $connection->table('m_pemain')->where('no_hp', $noHp)->first();
 
             if ($existingPemain !== null) {
-                $alreadyRegistered = $connection->table('turnamen_peserta')
-                    ->where('id_turnamen', $turnamenId)
-                    ->where(function ($query) use ($existingPemain) {
-                        $query->where('id_pemain1', $existingPemain->id)
-                            ->orWhere('id_pemain2', $existingPemain->id);
-                    })
-                    ->exists();
+                $alreadyRegistered = self::pesertaQueryForPemain(
+                    $connection,
+                    $turnamenId,
+                    (int) $existingPemain->id,
+                    $kategoriId
+                )->exists();
 
                 if ($alreadyRegistered) {
-                    return $fail('Nomor HP sudah terdaftar di turnamen ini.');
+                    return $fail('Nomor HP sudah terdaftar pada kategori ini.');
                 }
             }
 
@@ -1336,6 +1571,8 @@ class BornpadelMahjongTournaments
             }
 
             $now = now();
+            $hasKategoriCol = Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'id_kategori');
+            $hasSumberCol = Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'sumber');
 
             $result = $connection->transaction(function () use (
                 $connection,
@@ -1348,6 +1585,9 @@ class BornpadelMahjongTournaments
                 $usia,
                 $fotoPath,
                 $turnamenId,
+                $kategoriId,
+                $hasKategoriCol,
+                $hasSumberCol,
                 $now
             ) {
                 $pemainData = [
@@ -1376,15 +1616,24 @@ class BornpadelMahjongTournaments
                     ]));
                 }
 
-                $pesertaId = (int) $connection->table('turnamen_peserta')->insertGetId([
+                $pesertaData = [
                     'id_turnamen' => $turnamenId,
                     'id_pemain1' => $pemainId,
-                    'id_pemain2' => null,
                     'status' => 'unpaid',
                     'bukti_bayar' => null,
                     'created_at' => $now,
                     'updated_at' => $now,
-                ]);
+                ];
+
+                if ($hasKategoriCol && $kategoriId !== null) {
+                    $pesertaData['id_kategori'] = $kategoriId;
+                }
+
+                if ($hasSumberCol) {
+                    $pesertaData['sumber'] = 'external';
+                }
+
+                $pesertaId = (int) $connection->table('turnamen_peserta')->insertGetId($pesertaData);
 
                 return [
                     'pemain_id' => $pemainId,
@@ -1395,9 +1644,11 @@ class BornpadelMahjongTournaments
             return [
                 'data' => [
                     'turnamen_id' => $turnamenId,
+                    'kategori_id' => $kategoriId,
                     'pemain_id' => $result['pemain_id'],
                     'peserta_id' => $result['peserta_id'],
                     'foto_url' => self::pemainPhotoUrl($fotoPath),
+                    'status' => 'unpaid',
                 ],
                 'message' => 'Pemain berhasil didaftarkan.',
                 'error' => null,

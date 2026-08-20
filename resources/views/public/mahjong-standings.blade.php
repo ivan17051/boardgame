@@ -2,6 +2,20 @@
 
 @section('title', 'Klasemen — ' . ($standings['turnamen']['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong')
 
+@section('og')
+  @php
+    $ogTurnamen = $standings['turnamen'] ?? [];
+  @endphp
+  @include('public.partials.og-meta', [
+    'ogTournament' => $ogTurnamen,
+    'ogUrl' => route('public.mahjong-tournaments.standings', $ogTurnamen['id'] ?? 0),
+    'ogTitle' => 'Klasemen ' . ($ogTurnamen['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong',
+    'ogDescription' => 'Lihat klasemen turnamen mahjong ' . ($ogTurnamen['nama'] ?? '') . ' di Omahjong.',
+    'ogImage' => $ogTurnamen['share_image_url']
+      ?? \App\Support\BornpadelMahjongTournaments::tournamentShareImageUrl($ogTurnamen['foto'] ?? null),
+  ])
+@endsection
+
 @push('styles')
 <style>
   .page-header h1 {

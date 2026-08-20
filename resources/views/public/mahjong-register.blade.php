@@ -2,6 +2,16 @@
 
 @section('title', 'Daftar — ' . ($tournament['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong')
 
+@section('og')
+  @include('public.partials.og-meta', [
+    'ogTournament' => $tournament,
+    'ogUrl' => route('public.mahjong-tournaments.register', $tournament['id']),
+    'ogTitle' => 'Daftar ' . ($tournament['nama'] ?? 'Turnamen Mahjong') . ' — Omahjong',
+    'ogImage' => $tournament['share_image_url']
+      ?? \App\Support\BornpadelMahjongTournaments::tournamentShareImageUrl($tournament['foto'] ?? null),
+  ])
+@endsection
+
 @push('styles')
 <style>
   .register-card {

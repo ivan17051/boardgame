@@ -2,6 +2,25 @@
 
 @section('title', 'Turnamen Mahjong — Omahjong')
 
+@section('og')
+  @php
+    $featured = collect($tournaments ?? [])->first(function ($item) {
+      return ($item['status'] ?? null) === 'open';
+    });
+    $featuredImage = is_array($featured)
+      ? ($featured['share_image_url']
+        ?? \App\Support\BornpadelMahjongTournaments::tournamentShareImageUrl($featured['foto'] ?? null))
+      : \App\Support\BornpadelMahjongTournaments::defaultShareImageUrl();
+  @endphp
+  @include('public.partials.og-meta', [
+    'ogTournament' => $featured,
+    'ogUrl' => route('home'),
+    'ogTitle' => 'Omahjong — Turnamen Mahjong',
+    'ogDescription' => 'Daftar turnamen mahjong, lihat klasemen, dan pantau juara di Omahjong.',
+    'ogImage' => $featuredImage,
+  ])
+@endsection
+
 @push('styles')
 <style>
   .page-header {
@@ -56,6 +75,40 @@
     font-weight: 700;
     color: var(--brand);
     font-family: ui-monospace, monospace;
+  }
+  .tournament-syarat {
+    background: rgba(0, 97, 49, 0.04);
+    border: 1px solid rgba(0, 97, 49, 0.1);
+    border-radius: 0.65rem;
+    padding: 0.75rem 0.9rem;
+  }
+  .tournament-syarat .syarat-label {
+    color: #6c757d;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35rem;
+  }
+  .tournament-syarat .syarat-text {
+    color: #495057;
+    font-size: 0.9rem;
+    margin: 0;
+    white-space: pre-line;
+  }
+  .tournament-card-actions {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1fr;
+  }
+  .tournament-card-actions--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tournament-card-actions .btn {
+    min-height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .winner-row {
     display: flex;
@@ -227,7 +280,7 @@
             : '—';
           $harga = isset($item['harga']) ? (float) $item['harga'] : 0;
         @endphp
-        <div class="col-md-6 col-lg-4">
+        <div class="col-12 col-md-6">
           <article class="card tournament-card">
             <div class="card-body">
               <div class="meta-row">
@@ -256,19 +309,51 @@
                 </div>
               @endif
 
-              <div class="mt-auto d-flex flex-column gap-2 w-100">
+              @if (! empty($item['syarat']))
+                <div class="tournament-syarat">
+                  <div class="syarat-label">
+                    <i class="bi bi-card-text me-1"></i>Syarat
+                  </div>
+                  <p class="syarat-text">{{ $item['syarat'] }}</p>
+                </div>
+              @endif
+
+              @php
+                $actionCount = 0;
+                if ($status === 'open') {
+                  $actionCount = 2;
+                } elseif ($status === 'completed') {
+                  $actionCount = 2;
+                } elseif ($status === 'ongoing') {
+                  $actionCount = 1;
+                }
+              @endphp
+              <div class="mt-auto tournament-card-actions {{ $actionCount === 2 ? 'tournament-card-actions--2' : '' }}">
                   @if ($status === 'open')
+                    @php
+                      $registerUrl = route('public.mahjong-tournaments.register', $item['id']);
+                    @endphp
                     <a
-                      href="{{ route('public.mahjong-tournaments.register', $item['id']) }}"
-                      class="btn btn-sm btn-primary w-100"
+                      href="{{ $registerUrl }}"
+                      class="btn btn-sm btn-primary"
                     >
                       <i class="bi bi-person-plus me-1"></i>Daftar
                     </a>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary js-share-link"
+                      data-share-url="{{ $registerUrl }}"
+                      data-share-title="{{ $item['nama'] ?? 'Turnamen Mahjong' }}"
+                      data-share-text="Daftar turnamen {{ $item['nama'] ?? 'Mahjong' }} di Omahjong"
+                      data-no-loading
+                    >
+                      <i class="bi bi-share me-1"></i>Bagikan
+                    </button>
                   @endif
                   @if (in_array($status, ['ongoing', 'completed'], true))
                     <a
                       href="{{ route('public.mahjong-tournaments.standings', $item['id']) }}"
-                      class="btn btn-sm btn-outline-primary w-100"
+                      class="btn btn-sm btn-outline-primary"
                     >
                       <i class="bi bi-bar-chart-line me-1"></i>Klasemen
                     </a>
@@ -276,7 +361,7 @@
                   @if ($status === 'completed')
                     <button
                       type="button"
-                      class="btn btn-sm btn-warning w-100 js-juara-btn"
+                      class="btn btn-sm btn-warning js-juara-btn"
                       data-url="{{ route('public.mahjong-tournaments.winners', $item['id']) }}"
                       data-nama="{{ $item['nama'] ?? 'Turnamen' }}"
                     >
@@ -310,12 +395,63 @@
 @push('scripts')
 <script>
   (function () {
+    async function copyShareUrl(url) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        return;
+      }
+
+      const input = document.createElement('input');
+      input.value = url;
+      input.setAttribute('readonly', '');
+      input.style.position = 'absolute';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    }
+
+    document.querySelectorAll('.js-share-link').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const url = button.dataset.shareUrl;
+        const title = button.dataset.shareTitle || 'Omahjong';
+        const text = button.dataset.shareText || title;
+        const originalHtml = button.innerHTML;
+
+        try {
+          if (navigator.share) {
+            await navigator.share({ title, text, url });
+            return;
+          }
+
+          await copyShareUrl(url);
+          button.innerHTML = '<i class="bi bi-check2 me-1"></i> Link Disalin';
+          window.setTimeout(() => { button.innerHTML = originalHtml; }, 2000);
+        } catch (error) {
+          if (error && error.name === 'AbortError') {
+            return;
+          }
+
+          try {
+            await copyShareUrl(url);
+            button.innerHTML = '<i class="bi bi-check2 me-1"></i> Link Disalin';
+            window.setTimeout(() => { button.innerHTML = originalHtml; }, 2000);
+          } catch (_) {
+            window.prompt('Salin link:', url);
+          }
+        }
+      });
+    });
+
     const overlay = document.getElementById('juaraOverlay');
     const body = document.getElementById('juaraBody');
     const subtitle = document.getElementById('juaraSubtitle');
     const closeBtn = document.getElementById('juaraClose');
 
-    if (!overlay) return;
+    if (!overlay) {
+      return;
+    }
 
     const rankClass = (peringkat) => {
       if (peringkat === 1) return 'gold';

@@ -155,6 +155,7 @@ class PublicMahjongTournamentController extends Controller
             'no_hp' => ['required', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'],
             'no_hp_country' => ['nullable', 'string', 'max:8'],
             'no_hp_local' => ['nullable', 'string', 'max:20'],
+            'id_kategori' => ['nullable', 'integer'],
         ], [
             'no_hp.required' => 'Nomor HP wajib diisi.',
             'no_hp.regex' => 'Format nomor HP tidak valid.',
@@ -168,7 +169,15 @@ class PublicMahjongTournamentController extends Controller
                 ->withErrors(['no_hp' => 'Nomor HP wajib diisi.']);
         }
 
-        $result = BornpadelMahjongTournaments::checkRegistration($id, $noHp);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
+
+        if (! empty($tournament['has_multiple_kategori']) && ! $idKategori) {
+            return back()
+                ->withInput()
+                ->withErrors(['id_kategori' => 'Pilih kategori kompetisi terlebih dahulu.']);
+        }
+
+        $result = BornpadelMahjongTournaments::checkRegistration($id, $noHp, $idKategori);
 
         if ($result['error'] !== null || $result['data'] === null) {
             return back()
@@ -182,6 +191,7 @@ class PublicMahjongTournamentController extends Controller
 
         $sessionData = [
             'no_hp' => (string) ($data['no_hp'] ?? $noHp),
+            'id_kategori' => $data['kategori_id'] ?? $idKategori,
             'registered' => (bool) ($data['registered'] ?? false),
             'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
             'nama' => $pemain['nama'] ?? null,
@@ -244,7 +254,11 @@ class PublicMahjongTournamentController extends Controller
         }
 
         if (! empty($session['no_hp'])) {
-            $check = BornpadelMahjongTournaments::checkRegistration($id, $session['no_hp']);
+            $check = BornpadelMahjongTournaments::checkRegistration(
+                $id,
+                $session['no_hp'],
+                $session['id_kategori'] ?? null
+            );
             if ($check['error'] === null && $check['data'] !== null) {
                 $session = $this->mergeSessionFromCheck($session, $check['data']);
             }
@@ -297,6 +311,7 @@ class PublicMahjongTournamentController extends Controller
 
         $result = BornpadelMahjongTournaments::uploadPaymentReceipt([
             'id_turnamen' => $id,
+            'id_kategori' => $session['id_kategori'] ?? null,
             'no_hp' => $session['no_hp'] ?? null,
             'peserta_id' => $session['peserta_id'] ?? null,
         ], $validated['bukti_bayar']);
@@ -353,8 +368,11 @@ class PublicMahjongTournamentController extends Controller
                 ->withErrors(['form' => 'Nomor HP tidak sesuai. Silakan periksa ulang.']);
         }
 
+        $idKategori = $this->resolveKategoriId($request, $tournament, $session);
+
         $result = BornpadelMahjongTournaments::registerPlayer([
             'id_turnamen' => $id,
+            'id_kategori' => $idKategori,
             'nama' => $validated['nama'],
             'no_hp' => $noHp,
             'gender' => $validated['gender'],
@@ -369,7 +387,7 @@ class PublicMahjongTournamentController extends Controller
                 ->withErrors(['form' => $result['error']]);
         }
 
-        $check = BornpadelMahjongTournaments::checkRegistration($id, $noHp);
+        $check = BornpadelMahjongTournaments::checkRegistration($id, $noHp, $idKategori);
         $checkData = is_array($check['data'] ?? null) ? $check['data'] : [];
         $pemain = is_array($checkData['pemain'] ?? null) ? $checkData['pemain'] : null;
         $registration = is_array($checkData['registration'] ?? null) ? $checkData['registration'] : null;
@@ -377,6 +395,7 @@ class PublicMahjongTournamentController extends Controller
 
         session()->put($this->registerSessionKey($id), [
             'no_hp' => $noHp,
+            'id_kategori' => $registerData['kategori_id'] ?? $checkData['kategori_id'] ?? $idKategori,
             'registered' => true,
             'pemain_exists' => true,
             'nama' => $pemain['nama'] ?? $validated['nama'],
@@ -414,11 +433,28 @@ class PublicMahjongTournamentController extends Controller
     {
         $tournament = BornpadelMahjongTournaments::findMahjongTournament($id);
 
-        if (! $tournament || ($tournament['status'] ?? null) !== 'open') {
+        if (! $tournament || empty($tournament['registration_open'])) {
             abort(404, 'Pendaftaran tidak tersedia untuk turnamen ini.');
         }
 
         return $tournament;
+    }
+
+    private function resolveKategoriId(Request $request, array $tournament, ?array $session = null): ?int
+    {
+        if ($request->filled('id_kategori')) {
+            return (int) $request->input('id_kategori');
+        }
+
+        if ($session && ! empty($session['id_kategori'])) {
+            return (int) $session['id_kategori'];
+        }
+
+        if (! empty($tournament['default_kategori_id'])) {
+            return (int) $tournament['default_kategori_id'];
+        }
+
+        return null;
     }
 
     /**
@@ -497,6 +533,7 @@ class PublicMahjongTournamentController extends Controller
 
         return array_merge($session, [
             'no_hp' => (string) ($data['no_hp'] ?? $session['no_hp'] ?? ''),
+            'id_kategori' => $data['kategori_id'] ?? $session['id_kategori'] ?? null,
             'registered' => (bool) ($data['registered'] ?? $session['registered'] ?? false),
             'pemain_exists' => (bool) ($data['pemain_exists'] ?? $session['pemain_exists'] ?? false),
             'nama' => $pemain['nama'] ?? $session['nama'] ?? null,
