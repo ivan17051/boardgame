@@ -311,6 +311,7 @@ class BornpadelMahjongTournaments
                 'pemain_ids' => self::resolveStandingPemainIds($connection, $latestMember),
                 'nama' => self::resolveMemberDisplayName($connection, $latestMember),
                 'round_scores' => $roundScores,
+                'menang' => self::countMahjongWinsForPeserta($connection, $turnamenId, $babak, $pesertaId),
                 'total_babak' => $totalBabak,
                 'poin_babak' => $totalBabak,
                 'total_poin' => self::resolveMahjongTotalPoints(
@@ -368,6 +369,27 @@ class BornpadelMahjongTournaments
         ksort($byRonde);
 
         return array_values($byRonde);
+    }
+
+    private static function countMahjongWinsForPeserta($connection, int $turnamenId, int $babak, int $pesertaId): int
+    {
+        try {
+            if (! Schema::connection('bornpadel')->hasTable('mahjong_poin_entry')
+                || ! Schema::connection('bornpadel')->hasColumn('mahjong_poin_entry', 'is_winner')) {
+                return 0;
+            }
+
+            return (int) $connection->table('mahjong_poin_entry')
+                ->join('grup_member', 'grup_member.id', '=', 'mahjong_poin_entry.id_grup_member')
+                ->join('grup', 'grup.id', '=', 'grup_member.id_grup')
+                ->where('grup.id_turnamen', $turnamenId)
+                ->where('grup.babak', $babak)
+                ->where('grup_member.id_turnamen_peserta', $pesertaId)
+                ->where('mahjong_poin_entry.is_winner', 1)
+                ->count();
+        } catch (Throwable $e) {
+            return 0;
+        }
     }
 
     /**
@@ -1838,13 +1860,14 @@ class BornpadelMahjongTournaments
      * @param  array<int, array{id_grup_member:int, poin:int}>  $scores
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
      */
-    public static function storeGroupScores(int $id, int $idGrup, array $scores): array
+    public static function storeGroupScores(int $id, int $idGrup, array $scores, int $winnerMemberId): array
     {
         return self::externalJson(
             'POST',
             'tournaments/'.$id.'/mahjong-scores',
             [
                 'id_grup' => $idGrup,
+                'id_grup_member_pemenang' => $winnerMemberId,
                 'scores' => $scores,
             ],
             15,

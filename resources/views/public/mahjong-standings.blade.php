@@ -161,6 +161,39 @@
     font-weight: 600;
     color: #1f2937;
   }
+  .score-player-name.js-winner-pick {
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    border: 1px solid rgba(0, 97, 49, 0.18);
+    background: #fff;
+    border-radius: 0.65rem;
+    padding: 0.45rem 0.65rem;
+    cursor: pointer;
+  }
+  .score-player-name.js-winner-pick:hover {
+    border-color: var(--brand);
+    background: #f4f9f6;
+  }
+  .score-player-name.is-winner {
+    border-color: #f5b544;
+    background: #fff8e8;
+    color: #5c3d00;
+  }
+  .score-player-name.is-winner .score-winner-icon {
+    color: #e6a117;
+  }
+  .win-pill {
+    display: inline-block;
+    min-width: 2.25rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: #fff3cd;
+    color: #7a5c00;
+  }
   .score-player-row input {
     width: 6.5rem;
     text-align: center;
@@ -248,6 +281,7 @@
                   @foreach ($rounds as $round)
                     <th class="text-center">{{ $round['label'] ?? ('Ronde ' . ($round['round'] ?? '')) }}</th>
                   @endforeach
+                  <th class="text-center" title="Jumlah menang (ronde)">Menang</th>
                   <th class="text-center">Total Babak</th>
                 </tr>
               </thead>
@@ -276,12 +310,15 @@
                       </td>
                     @endfor
                     <td class="text-center">
+                      <span class="win-pill">{{ (int) ($row['menang'] ?? 0) }}</span>
+                    </td>
+                    <td class="text-center">
                       <span class="total-pill">{{ (int) ($row['total_babak'] ?? 0) }}</span>
                     </td>
                   </tr>
                 @empty
                   <tr>
-                    <td colspan="{{ 3 + $roundCount }}" class="text-center text-secondary py-4">
+                    <td colspan="{{ 4 + $roundCount }}" class="text-center text-secondary py-4">
                       Belum ada data pemain pada babak ini.
                     </td>
                   </tr>
@@ -300,7 +337,7 @@
         <div class="score-dialog-header">
           <div>
             <h3 id="scoreModalTitle"><i class="bi bi-pencil-square me-1"></i>Input Poin</h3>
-            <p id="scoreModalSubtitle">Isi poin untuk pemain di grup aktif</p>
+            <p id="scoreModalSubtitle">Klik nama pemain untuk menandai pemenang ronde, lalu isi poin</p>
           </div>
           <button type="button" class="score-close" id="scoreModalClose" aria-label="Tutup">
             <i class="bi bi-x-lg"></i>
@@ -336,6 +373,7 @@
 
     let groups = [];
     let selectedGroupId = null;
+    let selectedWinnerMemberId = null;
 
     const escapeHtml = (value) =>
       String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -366,8 +404,25 @@
     const selectedGroup = () =>
       groups.find((grup) => Number(grup.id) === Number(selectedGroupId)) || groups[0] || null;
 
+    const setWinnerSelection = (memberId) => {
+      selectedWinnerMemberId = memberId ? String(memberId) : null;
+      content.querySelectorAll('.js-winner-pick').forEach((btn) => {
+        const isWinner = selectedWinnerMemberId !== null
+          && String(btn.dataset.memberId) === selectedWinnerMemberId;
+        btn.classList.toggle('is-winner', isWinner);
+        btn.setAttribute('aria-pressed', isWinner ? 'true' : 'false');
+        const icon = btn.querySelector('.score-winner-icon');
+        if (icon) {
+          icon.className = isWinner
+            ? 'bi bi-trophy-fill score-winner-icon me-1'
+            : 'bi bi-trophy score-winner-icon me-1';
+        }
+      });
+    };
+
     const renderFields = () => {
       const grup = selectedGroup();
+      selectedWinnerMemberId = null;
       if (!grup) {
         content.innerHTML = '<p class="text-center text-secondary py-4 mb-0">Belum ada grup aktif.</p>';
         return;
@@ -382,7 +437,14 @@
 
       const playerRows = members.map((member) => `
         <div class="score-player-row">
-          <div class="score-player-name">${escapeHtml(member.nama || 'Pemain')}</div>
+          <button type="button"
+                  class="score-player-name js-winner-pick"
+                  data-member-id="${escapeHtml(member.id_grup_member)}"
+                  aria-pressed="false"
+                  title="Tandai sebagai pemenang ronde">
+            <i class="bi bi-trophy score-winner-icon me-1"></i>
+            ${escapeHtml(member.nama || 'Pemain')}
+          </button>
           <input type="number"
                  class="form-control js-score-poin"
                  data-member-id="${escapeHtml(member.id_grup_member)}"
@@ -411,8 +473,8 @@
       `;
 
       subtitle.textContent = grup.nama
-        ? `Isi poin untuk pemain di ${grup.nama}`
-        : 'Isi poin untuk pemain di grup aktif';
+        ? `Klik nama pemain untuk menandai pemenang ronde di ${grup.nama}`
+        : 'Klik nama pemain untuk menandai pemenang ronde, lalu isi poin';
 
       const groupSelect = document.getElementById('scoreGroupSelect');
       if (groupSelect) {
@@ -439,6 +501,11 @@
       const grup = selectedGroup();
       const inputs = Array.from(content.querySelectorAll('.js-score-poin'));
       const scores = [];
+
+      if (!selectedWinnerMemberId) {
+        showAlert('Pilih pemenang ronde dengan mengklik nama pemain.', 'error');
+        return;
+      }
 
       for (const input of inputs) {
         if (input.value === '' || input.value === null) {
@@ -481,6 +548,7 @@
           },
           body: JSON.stringify({
             id_grup: Number(grup.id),
+            id_grup_member_pemenang: Number(selectedWinnerMemberId),
             scores,
           }),
         });
@@ -520,6 +588,15 @@
         content.innerHTML = `<p class="text-center text-danger py-4 mb-0">${escapeHtml(error.message)}</p>`;
       }
     };
+
+    content.addEventListener('click', (event) => {
+      const pickBtn = event.target.closest('.js-winner-pick');
+      if (!pickBtn || !content.contains(pickBtn)) {
+        return;
+      }
+      event.preventDefault();
+      setWinnerSelection(pickBtn.dataset.memberId);
+    });
 
     openBtn.addEventListener('click', () => {
       openOverlay();
