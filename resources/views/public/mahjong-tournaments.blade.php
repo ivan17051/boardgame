@@ -319,16 +319,16 @@
               @endif
 
               @php
-                $actionCount = 0;
+                $actionCount = 1;
                 if ($status === 'open') {
-                  $actionCount = 2;
+                  $actionCount += 2;
                 } elseif ($status === 'completed') {
-                  $actionCount = 2;
+                  $actionCount += 2;
                 } elseif ($status === 'ongoing') {
-                  $actionCount = 1;
+                  $actionCount += 1;
                 }
               @endphp
-              <div class="mt-auto tournament-card-actions {{ $actionCount === 2 ? 'tournament-card-actions--2' : '' }}">
+              <div class="mt-auto tournament-card-actions {{ $actionCount >= 2 ? 'tournament-card-actions--2' : '' }}">
                   @if ($status === 'open')
                     @php
                       $registerUrl = route('public.mahjong-tournaments.register', $item['id']);
@@ -350,6 +350,12 @@
                       <i class="bi bi-share me-1"></i>Bagikan
                     </button>
                   @endif
+                  <a
+                    href="{{ route('public.mahjong-tournaments.participants', $item['id']) }}"
+                    class="btn btn-sm btn-outline-secondary"
+                  >
+                    <i class="bi bi-people me-1"></i>Peserta
+                  </a>
                   @if (in_array($status, ['ongoing', 'completed'], true))
                     <a
                       href="{{ route('public.mahjong-tournaments.standings', $item['id']) }}"

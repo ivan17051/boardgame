@@ -108,6 +108,169 @@ class BornpadelMahjongTournaments
     }
 
     /**
+     * Public participant list for a mahjong tournament (names + status only).
+     *
+     * @return array{type: string, items: array<int, array<string, mixed>>, error: string|null}
+     */
+    public static function fetchParticipants(int $id, $idKategori = null): array
+    {
+        $fromDatabase = self::fetchParticipantsFromDatabase($id, $idKategori);
+        if ($fromDatabase['error'] === null) {
+            return $fromDatabase;
+        }
+
+        $fromApi = self::fetchParticipantsFromApi($id, $idKategori);
+        if ($fromApi['error'] === null) {
+            return $fromApi;
+        }
+
+        return [
+            'type' => 'single',
+            'items' => [],
+            'error' => $fromDatabase['error'] ?? $fromApi['error'],
+        ];
+    }
+
+    /**
+     * @return array{type: string, items: array<int, array<string, mixed>>, error: string|null}
+     */
+    private static function fetchParticipantsFromDatabase(int $id, $idKategori = null): array
+    {
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasTable('m_pemain')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_peserta')) {
+                return [
+                    'type' => 'single',
+                    'items' => [],
+                    'error' => 'Database Bornpadel belum memiliki tabel peserta.',
+                ];
+            }
+
+            $turnamen = $connection->table('m_turnamen')
+                ->where('id', $id)
+                ->where('jenis', 'mahjong')
+                ->first();
+
+            if (! $turnamen) {
+                return [
+                    'type' => 'single',
+                    'items' => [],
+                    'error' => 'Turnamen tidak ditemukan.',
+                ];
+            }
+
+            $kategoriId = $idKategori !== null && $idKategori !== ''
+                ? (int) $idKategori
+                : null;
+
+            if ($kategoriId === null) {
+                $resolved = self::resolveKategoriForTournament($connection, $id, null, false);
+                if ($resolved['ok'] && ! empty($resolved['kategori'])) {
+                    $kategoriId = (int) $resolved['kategori']->id;
+                }
+            }
+
+            $query = $connection->table('turnamen_peserta')
+                ->leftJoin('m_pemain', 'm_pemain.id', '=', 'turnamen_peserta.id_pemain1')
+                ->where('turnamen_peserta.id_turnamen', $id)
+                ->where('turnamen_peserta.status', '!=', 'rejected')
+                ->orderBy('turnamen_peserta.id')
+                ->select([
+                    'turnamen_peserta.id',
+                    'turnamen_peserta.status',
+                    'm_pemain.nama',
+                ]);
+
+            if ($kategoriId !== null
+                && Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'id_kategori')) {
+                $query->where('turnamen_peserta.id_kategori', $kategoriId);
+            }
+
+            $items = $query->get()->map(function ($row) {
+                return [
+                    'id' => (int) $row->id,
+                    'nama' => $row->nama ?: '—',
+                    'status' => $row->status ?? null,
+                ];
+            })->values()->all();
+
+            return [
+                'type' => 'single',
+                'items' => $items,
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'type' => 'single',
+                'items' => [],
+                'error' => 'Database Bornpadel: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array{type: string, items: array<int, array<string, mixed>>, error: string|null}
+     */
+    private static function fetchParticipantsFromApi(int $id, $idKategori = null): array
+    {
+        $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
+        $token = config('services.bornpadel.api_token');
+
+        if (! $token || $apiUrl === '') {
+            return [
+                'type' => 'single',
+                'items' => [],
+                'error' => 'Token atau URL API Bornpadel belum dikonfigurasi.',
+            ];
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->acceptJson()
+                ->withToken($token)
+                ->get($apiUrl.'/tournaments/'.$id.'/participants', array_filter([
+                    'id_kategori' => $idKategori,
+                ], static function ($value) {
+                    return $value !== null && $value !== '';
+                }));
+
+            if ($response->successful() && $response->json('success') === true) {
+                $data = $response->json('data') ?? [];
+                $items = is_array($data['items'] ?? null) ? $data['items'] : [];
+
+                return [
+                    'type' => (string) ($data['type'] ?? 'single'),
+                    'items' => array_map(static function ($item) {
+                        $item = is_array($item) ? $item : [];
+
+                        return [
+                            'id' => isset($item['id']) ? (int) $item['id'] : null,
+                            'nama' => $item['nama'] ?? $item['display'] ?? $item['label'] ?? '—',
+                            'status' => $item['status'] ?? null,
+                        ];
+                    }, $items),
+                    'error' => null,
+                ];
+            }
+
+            return [
+                'type' => 'single',
+                'items' => [],
+                'error' => $response->json('message') ?? 'Gagal memuat daftar pemain dari API.',
+            ];
+        } catch (Throwable $e) {
+            return [
+                'type' => 'single',
+                'items' => [],
+                'error' => 'Tidak dapat terhubung ke server turnamen.',
+            ];
+        }
+    }
+
+    /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
     public static function fetchGroupStandings(int $id): array

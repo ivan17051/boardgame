@@ -205,7 +205,8 @@
 
 @section('content')
   @php
-    $turnamen = $standings['turnamen'] ?? [];
+    $turnamen = $tournament ?? ($standings['turnamen'] ?? []);
+    $idKategori = $idKategori ?? null;
     $sections = collect($standings['sections'] ?? [])
       ->sortByDesc(fn ($section) => (int) ($section['babak'] ?? 0))
       ->values()
@@ -224,13 +225,14 @@
     }
   @endphp
 
-  <header class="page-header mb-4">
+  <header class="page-header mb-4 text-center text-md-start">
     <a href="{{ route('home') }}" class="btn btn-sm btn-outline-secondary mb-3">
-      <i class="bi bi-arrow-left me-1"></i>Kembali
+      <i class="bi bi-house me-1"></i>Beranda
     </a>
     <h1><i class="bi bi-bar-chart-line me-2"></i>Klasemen Mahjong</h1>
     <p>{{ $turnamen['nama'] ?? 'Turnamen Mahjong' }}</p>
-    <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+    @include('public.partials.tournament-syarat', ['tournament' => $turnamen])
+    <div class="mt-2 d-flex flex-wrap justify-content-center justify-content-md-start align-items-center gap-2">
       <span class="badge {{ $statusClass }}">{{ $statusLabel }}</span>
       @if (! empty($turnamen['mahjong_is_final']))
         <span class="badge text-bg-warning text-dark">Final</span>
@@ -242,6 +244,12 @@
       @endif
     </div>
   </header>
+
+  @include('public.partials.tournament-nav', [
+    'tournament' => $turnamen,
+    'idKategori' => $idKategori,
+    'activeTab' => 'standings',
+  ])
 
   @if (! empty($standingsError))
     <div class="alert alert-warning" role="alert">

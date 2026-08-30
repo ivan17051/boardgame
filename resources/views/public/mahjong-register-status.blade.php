@@ -62,14 +62,21 @@
 @section('content')
   <header class="page-header text-center mb-4">
     <a href="{{ route('home') }}" class="btn btn-sm btn-outline-secondary mb-3">
-      <i class="bi bi-arrow-left me-1"></i>Kembali
+      <i class="bi bi-house me-1"></i>Beranda
     </a>
     <h1>
       <i class="bi {{ ! empty($justRegistered) ? 'bi-check-circle' : 'bi-person-check' }} me-2"></i>
       {{ ! empty($justRegistered) ? 'Pendaftaran Berhasil' : 'Status Pendaftaran' }}
     </h1>
     <p>{{ $tournament['nama'] ?? 'Turnamen Mahjong' }}</p>
+    @include('public.partials.tournament-syarat', ['tournament' => $tournament])
   </header>
+
+  @include('public.partials.tournament-nav', [
+    'tournament' => $tournament,
+    'idKategori' => $idKategori ?? $check['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
+    'activeTab' => 'register',
+  ])
 
   <div class="card register-card">
     <div class="card-header py-3">

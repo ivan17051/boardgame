@@ -26,20 +26,10 @@ class PublicMahjongTournamentController extends Controller
         ]);
     }
 
-    public function standings(int $id): View
+    public function standings(Request $request, int $id): View
     {
-        $tournament = BornpadelMahjongTournaments::findMahjongTournament($id);
-
-        if (! $tournament) {
-            abort(404, 'Turnamen tidak ditemukan.');
-        }
-
+        $tournament = $this->tournamentOrAbort($id);
         $status = $tournament['status'] ?? null;
-
-        if (! in_array($status, ['ongoing', 'completed'], true)) {
-            abort(404, 'Klasemen belum tersedia untuk turnamen ini.');
-        }
-
         $result = BornpadelMahjongTournaments::fetchGroupStandings($id);
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
@@ -54,6 +44,8 @@ class PublicMahjongTournamentController extends Controller
         }
 
         return view('public.mahjong-standings', [
+            'tournament' => $tournament,
+            'idKategori' => $this->resolveKategoriId($request, $tournament),
             'standings' => $data,
             'standingsError' => $result['error'],
             'canInputScores' => ($status === 'ongoing'),
@@ -61,6 +53,21 @@ class PublicMahjongTournamentController extends Controller
                 'groups' => route('public.mahjong-tournaments.scores.groups', $id),
                 'store' => route('public.mahjong-tournaments.scores.store', $id),
             ],
+        ]);
+    }
+
+    public function participants(Request $request, int $id): View
+    {
+        $tournament = $this->tournamentOrAbort($id);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
+        $result = BornpadelMahjongTournaments::fetchParticipants($id, $idKategori);
+
+        return view('public.mahjong-participants', [
+            'tournament' => $tournament,
+            'idKategori' => $idKategori,
+            'participants' => $result['items'] ?? [],
+            'participantType' => $result['type'] ?? 'single',
+            'participantsError' => $result['error'],
         ]);
     }
 
@@ -153,12 +160,13 @@ class PublicMahjongTournamentController extends Controller
         return $this->scoreJson($result, 201);
     }
 
-    public function showRegister(int $id): View
+    public function showRegister(Request $request, int $id): View
     {
         $tournament = $this->openTournamentOrAbort($id);
 
         return view('public.mahjong-register-check', [
             'tournament' => $tournament,
+            'idKategori' => $this->resolveKategoriId($request, $tournament),
         ]);
     }
 
@@ -244,6 +252,7 @@ class PublicMahjongTournamentController extends Controller
 
         return view('public.mahjong-register', [
             'tournament' => $tournament,
+            'idKategori' => $session['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
             'check' => $session,
             'prefillNama' => old('nama', $session['nama'] ?? ''),
             'prefillGender' => old('gender', $session['gender'] ?? ''),
@@ -287,6 +296,7 @@ class PublicMahjongTournamentController extends Controller
 
         return view('public.mahjong-register-status', [
             'tournament' => $tournament,
+            'idKategori' => $session['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
             'check' => $session,
             'statusLabel' => BornpadelMahjongTournaments::registrationStatusLabel($session['registration_status'] ?? null),
             'genderLabel' => BornpadelMahjongTournaments::genderLabel($session['gender'] ?? null),

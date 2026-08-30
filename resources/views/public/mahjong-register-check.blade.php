@@ -58,9 +58,13 @@
 @endpush
 
 @section('content')
+  @php
+    $idKategori = $idKategori ?? $tournament['default_kategori_id'] ?? null;
+  @endphp
+
   <header class="page-header text-center mb-4">
     <a href="{{ route('home') }}" class="btn btn-sm btn-outline-secondary mb-3">
-      <i class="bi bi-arrow-left me-1"></i>Kembali
+      <i class="bi bi-house me-1"></i>Beranda
     </a>
     <h1><i class="bi bi-person-plus me-2"></i>Daftar Turnamen</h1>
     <p>{{ $tournament['nama'] ?? 'Turnamen Mahjong' }}</p>
@@ -70,7 +74,14 @@
         {{ \Carbon\Carbon::parse($tournament['tanggal'])->locale('id')->translatedFormat('d F Y') }}
       </p>
     @endif
+    @include('public.partials.tournament-syarat', ['tournament' => $tournament])
   </header>
+
+  @include('public.partials.tournament-nav', [
+    'tournament' => $tournament,
+    'idKategori' => $idKategori,
+    'activeTab' => 'register',
+  ])
 
   <div class="card register-card">
     <div class="card-header py-3">
@@ -101,7 +112,7 @@
               @foreach (($tournament['kategori'] ?? []) as $kat)
                 <option
                   value="{{ $kat['id'] }}"
-                  {{ (string) old('id_kategori', $tournament['default_kategori_id'] ?? '') === (string) $kat['id'] ? 'selected' : '' }}
+                  {{ (string) old('id_kategori', $idKategori ?? $tournament['default_kategori_id'] ?? '') === (string) $kat['id'] ? 'selected' : '' }}
                 >
                   {{ $kat['nama'] }}
                 </option>

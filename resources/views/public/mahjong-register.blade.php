@@ -45,25 +45,6 @@
     background: var(--brand-dark);
     border-color: var(--brand-dark);
   }
-  .syarat-box {
-    background: rgba(0, 97, 49, 0.04);
-    border: 1px solid rgba(0, 97, 49, 0.12);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 1.25rem;
-  }
-  .syarat-box h2 {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--brand-dark);
-    margin: 0 0 0.5rem;
-  }
-  .syarat-box p {
-    color: #6c757d;
-    font-size: 0.9rem;
-    margin: 0;
-    white-space: pre-line;
-  }
   .foto-preview {
     display: none;
     margin-top: 0.75rem;
@@ -92,20 +73,20 @@
         {{ \Carbon\Carbon::parse($tournament['tanggal'])->locale('id')->translatedFormat('d F Y') }}
       </p>
     @endif
+    @include('public.partials.tournament-syarat', ['tournament' => $tournament])
   </header>
+
+  @include('public.partials.tournament-nav', [
+    'tournament' => $tournament,
+    'idKategori' => $idKategori ?? $check['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
+    'activeTab' => 'register',
+  ])
 
   <div class="card register-card">
     <div class="card-header py-3">
       Formulir Pendaftaran Pemain
     </div>
     <div class="card-body p-4">
-      @if (! empty($tournament['syarat']))
-        <div class="syarat-box">
-          <h2><i class="bi bi-info-circle me-1"></i>Syarat &amp; Ketentuan</h2>
-          <p>{{ $tournament['syarat'] }}</p>
-        </div>
-      @endif
-
       @if (! empty($pemainExists))
         <div class="alert alert-info py-2 small">
           Nama dan jenis kelamin sudah diisi dari data pemain. Anda dapat mengubahnya jika perlu.

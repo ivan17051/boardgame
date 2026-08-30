@@ -63,6 +63,9 @@ Route::post('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController:
     ->whereNumber('id')
     ->middleware('throttle:10,1')
     ->name('public.mahjong-tournaments.register.store');
+Route::get('/turnamen/mahjong/{id}/peserta', [PublicMahjongTournamentController::class, 'participants'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.participants');
 Route::get('/turnamen/mahjong/{id}/peringkat', [PublicMahjongTournamentController::class, 'standings'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.standings');
