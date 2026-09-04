@@ -323,9 +323,9 @@
                 if ($status === 'open') {
                   $actionCount += 2;
                 } elseif ($status === 'completed') {
-                  $actionCount += 2;
+                  $actionCount += 3;
                 } elseif ($status === 'ongoing') {
-                  $actionCount += 1;
+                  $actionCount += 2;
                 }
               @endphp
               <div class="mt-auto tournament-card-actions {{ $actionCount >= 2 ? 'tournament-card-actions--2' : '' }}">
@@ -357,6 +357,12 @@
                     <i class="bi bi-people me-1"></i>Peserta
                   </a>
                   @if (in_array($status, ['ongoing', 'completed'], true))
+                    <a
+                      href="{{ route('public.mahjong-tournaments.groups', $item['id']) }}"
+                      class="btn btn-sm btn-outline-secondary"
+                    >
+                      <i class="bi bi-grid-3x3-gap me-1"></i>Grup
+                    </a>
                     <a
                       href="{{ route('public.mahjong-tournaments.standings', $item['id']) }}"
                       class="btn btn-sm btn-outline-primary"

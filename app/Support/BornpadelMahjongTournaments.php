@@ -810,13 +810,15 @@ class BornpadelMahjongTournaments
 
             if ($peserta) {
                 $ids = [];
+                $pemain1Id = isset($peserta->id_pemain1) ? $peserta->id_pemain1 : null;
+                $pemain2Id = isset($peserta->id_pemain2) ? $peserta->id_pemain2 : null;
 
-                if (! empty($peserta->id_pemain1)) {
-                    $ids[] = (int) $peserta->id_pemain1;
+                if (! empty($pemain1Id)) {
+                    $ids[] = (int) $pemain1Id;
                 }
 
-                if (! empty($peserta->id_pemain2)) {
-                    $ids[] = (int) $peserta->id_pemain2;
+                if (! empty($pemain2Id)) {
+                    $ids[] = (int) $pemain2Id;
                 }
 
                 if ($ids !== []) {
@@ -839,11 +841,13 @@ class BornpadelMahjongTournaments
                 ->first();
 
             if ($peserta) {
-                $pemain1 = $peserta->id_pemain1
-                    ? $connection->table('m_pemain')->where('id', $peserta->id_pemain1)->value('nama')
+                $pemain1Id = isset($peserta->id_pemain1) ? $peserta->id_pemain1 : null;
+                $pemain2Id = isset($peserta->id_pemain2) ? $peserta->id_pemain2 : null;
+                $pemain1 = $pemain1Id
+                    ? $connection->table('m_pemain')->where('id', $pemain1Id)->value('nama')
                     : null;
-                $pemain2 = $peserta->id_pemain2
-                    ? $connection->table('m_pemain')->where('id', $peserta->id_pemain2)->value('nama')
+                $pemain2 = $pemain2Id
+                    ? $connection->table('m_pemain')->where('id', $pemain2Id)->value('nama')
                     : null;
 
                 if ($pemain1 && $pemain2) {
@@ -2004,6 +2008,199 @@ class BornpadelMahjongTournaments
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
     public static function fetchMahjongGroups(int $id): array
+    {
+        $fromDatabase = self::fetchMahjongGroupsFromDatabase($id);
+        if ($fromDatabase['error'] === null) {
+            return $fromDatabase;
+        }
+
+        $fromApi = self::fetchMahjongGroupsFromApi($id);
+        if ($fromApi['error'] === null) {
+            return $fromApi;
+        }
+
+        return [
+            'data' => $fromDatabase['data'],
+            'error' => $fromDatabase['error'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public static function findMahjongGroup(int $turnamenId, int $grupId): ?array
+    {
+        $result = self::fetchMahjongGroups($turnamenId);
+        $groups = is_array($result['data']['groups'] ?? null) ? $result['data']['groups'] : [];
+
+        foreach ($groups as $group) {
+            if ((int) ($group['id'] ?? 0) === $grupId) {
+                return $group;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function fetchMahjongGroupsFromDatabase(int $id): array
+    {
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasTable('grup')
+                || ! Schema::connection('bornpadel')->hasTable('grup_member')) {
+                return [
+                    'data' => null,
+                    'error' => 'Database Bornpadel belum memiliki tabel grup.',
+                ];
+            }
+
+            $turnamen = $connection->table('m_turnamen')
+                ->where('id', $id)
+                ->where('jenis', 'mahjong')
+                ->first();
+
+            if (! $turnamen) {
+                return [
+                    'data' => null,
+                    'error' => 'Turnamen tidak ditemukan.',
+                ];
+            }
+
+            $groupRows = $connection->table('grup')
+                ->where('id_turnamen', $id)
+                ->where('is_aktif', true)
+                ->orderBy('nama')
+                ->orderBy('id')
+                ->get();
+
+            if ($groupRows->isEmpty()) {
+                $latestBabak = $connection->table('grup')
+                    ->where('id_turnamen', $id)
+                    ->max('babak');
+
+                if ($latestBabak) {
+                    $groupRows = self::resolveMahjongGrupBatchForBabak($connection, $id, (int) $latestBabak);
+                }
+            }
+
+            $groups = $groupRows->map(function ($grup) use ($connection, $id) {
+                return self::mapMahjongGroupRow($connection, $grup, $id);
+            })->values()->all();
+
+            return [
+                'data' => [
+                    'turnamen' => [
+                        'id' => (int) $turnamen->id,
+                        'nama' => $turnamen->nama,
+                        'jenis' => $turnamen->jenis ?? 'mahjong',
+                        'status' => $turnamen->status ?? null,
+                        'mahjong_is_final' => (bool) ($turnamen->mahjong_is_final ?? false),
+                    ],
+                    'groups' => $groups,
+                ],
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'data' => null,
+                'error' => 'Database Bornpadel: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @param  object  $grup
+     * @return array<string, mixed>
+     */
+    private static function mapMahjongGroupRow($connection, $grup, int $turnamenId): array
+    {
+        $isActive = (bool) ($grup->is_aktif ?? false);
+        $babak = (int) ($grup->babak ?? 0);
+        $members = self::orderedGroupMembers($connection, (int) $grup->id);
+
+        return [
+            'id' => (int) $grup->id,
+            'nama' => $grup->nama,
+            'babak' => $babak,
+            'is_aktif' => $isActive,
+            'members' => $members->map(function ($member) use ($connection, $isActive, $babak, $turnamenId) {
+                $poinDidapat = self::resolveMahjongBabakPoints(
+                    $connection,
+                    $member,
+                    $babak,
+                    $turnamenId,
+                    $isActive
+                );
+                $entries = self::mahjongEntriesForMember($connection, (int) $member->id);
+
+                return [
+                    'id_grup_member' => (int) $member->id,
+                    'id_pemain' => (int) ($member->id_pemain ?? 0),
+                    'id_peserta' => (int) ($member->id_turnamen_peserta ?? 0),
+                    'nama' => self::resolveMemberDisplayName($connection, $member),
+                    'poin_didapat' => $poinDidapat,
+                    'poin_akumulasi' => (int) ($member->poin_akumulasi ?? 0),
+                    'total_poin' => self::resolveMahjongTotalPoints($member, $poinDidapat, $isActive),
+                    'menang' => self::countMahjongWinsForMember($entries),
+                    'entries' => $entries,
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    /**
+     * @return array<int, array{id:int, poin:int, is_winner:bool}>
+     */
+    private static function mahjongEntriesForMember($connection, int $memberId): array
+    {
+        try {
+            if (! Schema::connection('bornpadel')->hasTable('mahjong_poin_entry')) {
+                return [];
+            }
+
+            return $connection->table('mahjong_poin_entry')
+                ->where('id_grup_member', $memberId)
+                ->orderBy('id')
+                ->get()
+                ->map(function ($entry) {
+                    return [
+                        'id' => (int) $entry->id,
+                        'poin' => (int) $entry->poin,
+                        'is_winner' => (bool) ($entry->is_winner ?? false),
+                    ];
+                })
+                ->values()
+                ->all();
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<int, array{id?:int, poin?:int, is_winner?:bool}>  $entries
+     */
+    private static function countMahjongWinsForMember(array $entries): int
+    {
+        $count = 0;
+
+        foreach ($entries as $entry) {
+            if (! empty($entry['is_winner'])) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function fetchMahjongGroupsFromApi(int $id): array
     {
         $result = self::externalJson(
             'GET',

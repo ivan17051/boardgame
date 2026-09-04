@@ -30,6 +30,15 @@
             'url' => route('public.mahjong-tournaments.participants', array_merge(['id' => $tournamentId], $query)),
         ];
 
+        if (in_array($status, ['ongoing', 'completed'], true) || $activeTab === 'groups') {
+            $tabs[] = [
+                'key' => 'groups',
+                'label' => 'Grup',
+                'icon' => 'bi-grid-3x3-gap',
+                'url' => route('public.mahjong-tournaments.groups', array_merge(['id' => $tournamentId], $query)),
+            ];
+        }
+
         $tabs[] = [
             'key' => 'standings',
             'label' => 'Klasemen',
@@ -51,7 +60,7 @@
     -webkit-overflow-scrolling: touch;
     padding: 0.35rem;
     width: 100%;
-    max-width: 36rem;
+    max-width: 42rem;
     margin: 0 auto 1.25rem;
     background: #fff;
     border: 1px solid rgba(0, 97, 49, 0.12);

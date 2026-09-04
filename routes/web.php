@@ -69,6 +69,18 @@ Route::get('/turnamen/mahjong/{id}/peserta', [PublicMahjongTournamentController:
 Route::get('/turnamen/mahjong/{id}/peringkat', [PublicMahjongTournamentController::class, 'standings'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.standings');
+Route::get('/turnamen/mahjong/{id}/grup', [PublicMahjongTournamentController::class, 'groupsPage'])
+    ->whereNumber('id')
+    ->name('public.mahjong-tournaments.groups');
+Route::get('/turnamen/mahjong/{id}/grup/{grupId}', [PublicMahjongTournamentController::class, 'showGroup'])
+    ->whereNumber('id')
+    ->whereNumber('grupId')
+    ->name('public.mahjong-tournaments.groups.show');
+Route::post('/turnamen/mahjong/{id}/grup/{grupId}/poin', [PublicMahjongTournamentController::class, 'storeGroupPageScores'])
+    ->whereNumber('id')
+    ->whereNumber('grupId')
+    ->middleware('throttle:30,1')
+    ->name('public.mahjong-tournaments.groups.store');
 Route::get('/turnamen/mahjong/{id}/juara', [PublicMahjongTournamentController::class, 'winners'])
     ->whereNumber('id')
     ->name('public.mahjong-tournaments.winners');

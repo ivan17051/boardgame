@@ -29,7 +29,6 @@ class PublicMahjongTournamentController extends Controller
     public function standings(Request $request, int $id): View
     {
         $tournament = $this->tournamentOrAbort($id);
-        $status = $tournament['status'] ?? null;
         $result = BornpadelMahjongTournaments::fetchGroupStandings($id);
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
@@ -48,12 +47,95 @@ class PublicMahjongTournamentController extends Controller
             'idKategori' => $this->resolveKategoriId($request, $tournament),
             'standings' => $data,
             'standingsError' => $result['error'],
-            'canInputScores' => ($status === 'ongoing'),
-            'scoreRoutes' => [
-                'groups' => route('public.mahjong-tournaments.scores.groups', $id),
-                'store' => route('public.mahjong-tournaments.scores.store', $id),
-            ],
         ]);
+    }
+
+    public function groupsPage(Request $request, int $id): View
+    {
+        $tournament = $this->tournamentOrAbort($id);
+        $result = BornpadelMahjongTournaments::fetchMahjongGroups($id);
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+
+        return view('public.mahjong-groups', [
+            'tournament' => $tournament,
+            'idKategori' => $this->resolveKategoriId($request, $tournament),
+            'groups' => is_array($data['groups'] ?? null) ? $data['groups'] : [],
+            'groupsError' => $result['error'],
+            'canInputScores' => ($tournament['status'] ?? null) === 'ongoing',
+            'scoreStoreUrl' => route('public.mahjong-tournaments.scores.store', $id),
+        ]);
+    }
+
+    /**
+     * @return View|RedirectResponse
+     */
+    public function showGroup(Request $request, int $id, int $grupId)
+    {
+        $tournament = $this->tournamentOrAbort($id);
+
+        if (! BornpadelMahjongTournaments::findMahjongGroup($id, $grupId)) {
+            abort(404, 'Grup tidak ditemukan pada turnamen ini.');
+        }
+
+        return redirect()->route('public.mahjong-tournaments.groups', $id);
+    }
+
+    public function storeGroupPageScores(Request $request, int $id, int $grupId): RedirectResponse
+    {
+        $this->ongoingTournamentOrAbort($id);
+
+        if (! BornpadelMahjongTournaments::findMahjongGroup($id, $grupId)) {
+            abort(404, 'Grup tidak ditemukan pada turnamen ini.');
+        }
+
+        $validated = $request->validate([
+            'id_grup_member_pemenang' => ['required', 'integer'],
+            'scores' => ['required', 'array', 'size:4'],
+            'scores.*.id_grup_member' => ['required', 'integer'],
+            'scores.*.poin' => ['required', 'integer'],
+        ], [
+            'id_grup_member_pemenang.required' => 'Pilih pemenang ronde dengan mengklik nama pemain.',
+            'scores.required' => 'Poin keempat pemain wajib diisi.',
+            'scores.size' => 'Poin harus diisi untuk keempat pemain dalam grup.',
+            'scores.*.id_grup_member.required' => 'Anggota grup wajib dipilih.',
+            'scores.*.poin.required' => 'Poin wajib diisi.',
+            'scores.*.poin.integer' => 'Poin harus berupa angka.',
+        ]);
+
+        $scores = array_map(static function (array $score) {
+            return [
+                'id_grup_member' => (int) $score['id_grup_member'],
+                'poin' => (int) $score['poin'],
+            ];
+        }, $validated['scores']);
+
+        $winnerId = (int) $validated['id_grup_member_pemenang'];
+        $scoreMemberIds = array_map(static function (array $score) {
+            return (int) $score['id_grup_member'];
+        }, $scores);
+
+        if (! in_array($winnerId, $scoreMemberIds, true)) {
+            return back()
+                ->withInput()
+                ->withErrors(['form' => 'Pemenang harus salah satu pemain di grup ini.']);
+        }
+
+        $result = BornpadelMahjongTournaments::storeGroupScores(
+            $id,
+            $grupId,
+            $scores,
+            $winnerId
+        );
+
+        if ($result['error'] !== null) {
+            return back()
+                ->withInput()
+                ->withErrors(['form' => $result['error']]);
+        }
+
+        return redirect()
+            ->route('public.mahjong-tournaments.groups', $id)
+            ->with('success', $result['message'] ?? 'Poin grup berhasil disimpan.');
     }
 
     public function participants(Request $request, int $id): View
