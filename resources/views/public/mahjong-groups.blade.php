@@ -221,7 +221,7 @@
         <div class="score-dialog-header">
           <div>
             <h3 id="scoreModalTitle"><i class="bi bi-pencil-square me-1"></i>Input Poin</h3>
-            <p id="scoreModalSubtitle">Klik nama pemain untuk menandai pemenang ronde, lalu isi poin</p>
+            <p id="scoreModalSubtitle">Isi poin keempat pemain. Menandai pemenang ronde bersifat opsional.</p>
           </div>
           <button type="button" class="score-close" id="scoreModalClose" aria-label="Tutup">
             <i class="bi bi-x-lg"></i>
@@ -303,7 +303,7 @@
                   class="score-player-name js-winner-pick"
                   data-member-id="${escapeHtml(member.id)}"
                   aria-pressed="false"
-                  title="Tandai sebagai pemenang ronde">
+                  title="Tandai sebagai pemenang ronde (opsional)">
             <i class="bi bi-trophy score-winner-icon me-1"></i>
             ${escapeHtml(member.nama || 'Pemain')}
           </button>
@@ -329,8 +329,8 @@
       `;
 
       subtitle.textContent = grupName
-        ? `Klik nama pemain untuk menandai pemenang ronde di ${grupName}${babak ? ' — Babak ' + babak : ''}`
-        : 'Klik nama pemain untuk menandai pemenang ronde, lalu isi poin';
+        ? `Isi poin di ${grupName}${babak ? ' — Babak ' + babak : ''}. Pemenang ronde opsional.`
+        : 'Isi poin keempat pemain. Menandai pemenang ronde bersifat opsional.';
 
       const form = document.getElementById('scoreHandForm');
       if (form) {
@@ -347,11 +347,6 @@
       event.preventDefault();
       const inputs = Array.from(content.querySelectorAll('.js-score-poin'));
       const scores = [];
-
-      if (!selectedWinnerMemberId) {
-        showAlert('Pilih pemenang ronde dengan mengklik nama pemain.', 'error');
-        return;
-      }
 
       for (const input of inputs) {
         if (input.value === '' || input.value === null) {
@@ -394,7 +389,7 @@
           },
           body: JSON.stringify({
             id_grup: Number(selectedGroupId),
-            id_grup_member_pemenang: Number(selectedWinnerMemberId),
+            id_grup_member_pemenang: selectedWinnerMemberId ? Number(selectedWinnerMemberId) : null,
             scores,
           }),
         });
@@ -441,7 +436,8 @@
       const pickBtn = event.target.closest('.js-winner-pick');
       if (pickBtn && content.contains(pickBtn)) {
         event.preventDefault();
-        setWinnerSelection(pickBtn.dataset.memberId);
+        const memberId = pickBtn.dataset.memberId;
+        setWinnerSelection(selectedWinnerMemberId === String(memberId) ? null : memberId);
       }
     });
 

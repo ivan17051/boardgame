@@ -2220,16 +2220,21 @@ class BornpadelMahjongTournaments
      * @param  array<int, array{id_grup_member:int, poin:int}>  $scores
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
      */
-    public static function storeGroupScores(int $id, int $idGrup, array $scores, int $winnerMemberId): array
+    public static function storeGroupScores(int $id, int $idGrup, array $scores, ?int $winnerMemberId = null): array
     {
+        $payload = [
+            'id_grup' => $idGrup,
+            'scores' => $scores,
+        ];
+
+        if ($winnerMemberId !== null) {
+            $payload['id_grup_member_pemenang'] = $winnerMemberId;
+        }
+
         return self::externalJson(
             'POST',
             'tournaments/'.$id.'/mahjong-scores',
-            [
-                'id_grup' => $idGrup,
-                'id_grup_member_pemenang' => $winnerMemberId,
-                'scores' => $scores,
-            ],
+            $payload,
             15,
             'Gagal menyimpan poin grup.'
         );

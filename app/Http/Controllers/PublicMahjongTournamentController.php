@@ -89,12 +89,11 @@ class PublicMahjongTournamentController extends Controller
         }
 
         $validated = $request->validate([
-            'id_grup_member_pemenang' => ['required', 'integer'],
+            'id_grup_member_pemenang' => ['nullable', 'integer'],
             'scores' => ['required', 'array', 'size:4'],
             'scores.*.id_grup_member' => ['required', 'integer'],
             'scores.*.poin' => ['required', 'integer'],
         ], [
-            'id_grup_member_pemenang.required' => 'Pilih pemenang ronde dengan mengklik nama pemain.',
             'scores.required' => 'Poin keempat pemain wajib diisi.',
             'scores.size' => 'Poin harus diisi untuk keempat pemain dalam grup.',
             'scores.*.id_grup_member.required' => 'Anggota grup wajib dipilih.',
@@ -109,12 +108,14 @@ class PublicMahjongTournamentController extends Controller
             ];
         }, $validated['scores']);
 
-        $winnerId = (int) $validated['id_grup_member_pemenang'];
+        $winnerId = isset($validated['id_grup_member_pemenang']) && $validated['id_grup_member_pemenang'] !== null
+            ? (int) $validated['id_grup_member_pemenang']
+            : null;
         $scoreMemberIds = array_map(static function (array $score) {
             return (int) $score['id_grup_member'];
         }, $scores);
 
-        if (! in_array($winnerId, $scoreMemberIds, true)) {
+        if ($winnerId !== null && ! in_array($winnerId, $scoreMemberIds, true)) {
             return back()
                 ->withInput()
                 ->withErrors(['form' => 'Pemenang harus salah satu pemain di grup ini.']);
@@ -199,13 +200,12 @@ class PublicMahjongTournamentController extends Controller
 
         $validated = $request->validate([
             'id_grup' => ['required', 'integer'],
-            'id_grup_member_pemenang' => ['required', 'integer'],
+            'id_grup_member_pemenang' => ['nullable', 'integer'],
             'scores' => ['required', 'array', 'size:4'],
             'scores.*.id_grup_member' => ['required', 'integer'],
             'scores.*.poin' => ['required', 'integer'],
         ], [
             'id_grup.required' => 'Grup wajib dipilih.',
-            'id_grup_member_pemenang.required' => 'Pilih pemenang ronde dengan mengklik nama pemain.',
             'scores.required' => 'Poin keempat pemain wajib diisi.',
             'scores.size' => 'Poin harus diisi untuk keempat pemain dalam grup.',
             'scores.*.id_grup_member.required' => 'Anggota grup wajib dipilih.',
@@ -220,12 +220,14 @@ class PublicMahjongTournamentController extends Controller
             ];
         }, $validated['scores']);
 
-        $winnerId = (int) $validated['id_grup_member_pemenang'];
+        $winnerId = isset($validated['id_grup_member_pemenang']) && $validated['id_grup_member_pemenang'] !== null
+            ? (int) $validated['id_grup_member_pemenang']
+            : null;
         $scoreMemberIds = array_map(static function (array $score) {
             return (int) $score['id_grup_member'];
         }, $scores);
 
-        if (! in_array($winnerId, $scoreMemberIds, true)) {
+        if ($winnerId !== null && ! in_array($winnerId, $scoreMemberIds, true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Pemenang harus salah satu pemain di grup ini.',
