@@ -7,6 +7,7 @@ use App\Models\Meja;
 use App\Models\Rental;
 use App\Models\Toko;
 use App\Support\RentalCheckout;
+use App\Support\RentalMahjongScoring;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +102,7 @@ class GuestRentalController extends Controller
             'message' => 'Sewa dimulai. Selamat bermain!',
             'guest_token' => $guestToken,
             'rental' => $this->rentalPayload($rental),
+            'score_url' => RentalMahjongScoring::ensureScoreLink($rental)['score_url'],
         ]);
     }
 
@@ -163,6 +165,8 @@ class GuestRentalController extends Controller
                 'status' => 'completed',
                 'guest_token' => null,
             ]);
+
+            RentalMahjongScoring::closeForRental((int) $locked->id);
 
             Meja::query()
                 ->whereKey($locked->id_meja)

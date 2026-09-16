@@ -85,6 +85,19 @@ class Rental extends Model
         CashFlow::query()->where('id_rental', $this->id)->delete();
         RentalAdditionalItem::query()->where('id_rental', $this->id)->delete();
 
+        $session = RentalMahjongSession::query()->where('rental_id', $this->id)->first();
+        if ($session) {
+            $handIds = RentalMahjongHand::query()
+                ->where('session_id', $session->id)
+                ->pluck('id');
+            if ($handIds->isNotEmpty()) {
+                RentalMahjongHandScore::query()->whereIn('hand_id', $handIds)->delete();
+            }
+            RentalMahjongHand::query()->where('session_id', $session->id)->delete();
+            RentalMahjongPlayer::query()->where('session_id', $session->id)->delete();
+            $session->delete();
+        }
+
         if ($this->bukti_transaksi && $disk->exists($this->bukti_transaksi)) {
             $disk->delete($this->bukti_transaksi);
         }
@@ -108,6 +121,11 @@ class Rental extends Model
     public function additionalItems(): HasMany
     {
         return $this->hasMany(RentalAdditionalItem::class, 'id_rental');
+    }
+
+    public function mahjongSession(): HasOne
+    {
+        return $this->hasOne(RentalMahjongSession::class, 'rental_id');
     }
 
     public function isMember(): bool

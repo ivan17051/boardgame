@@ -113,12 +113,45 @@
       </div>
       <div class="modal-body d-grid gap-2">
         <p class="small text-secondary mb-1" id="occupiedActionCustomer"></p>
+        <button type="button" class="btn btn-outline-success" id="occupiedActionScoreBtn">
+          <i class="bi bi-trophy me-1"></i>Link skor mahjong
+        </button>
         <button type="button" class="btn btn-outline-primary" id="occupiedActionItemsBtn">
           <i class="bi bi-basket me-1"></i>Item tambahan
         </button>
         <button type="button" class="btn btn-warning" id="occupiedActionCheckoutBtn">
           <i class="bi bi-cash-coin me-1"></i>Checkout
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{-- Score link / QR --}}
+<div class="modal fade" id="scoreLinkModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Link skor — <span id="scoreLinkMejaLabel"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="small text-secondary" id="scoreLinkCustomer"></p>
+        <div id="scoreLinkAlert" class="alert alert-danger py-2 d-none"></div>
+        <div id="scoreLinkLoading" class="text-secondary small py-3">Memuat link…</div>
+        <div id="scoreLinkContent" class="d-none">
+          <img id="scoreLinkQr" alt="QR skor" class="img-fluid mb-3" style="max-width: 200px;" />
+          <div class="input-group input-group-sm mb-2">
+            <input type="text" class="form-control" id="scoreLinkUrl" readonly />
+            <button type="button" class="btn btn-outline-secondary" id="scoreLinkCopyBtn" title="Salin">
+              <i class="bi bi-clipboard"></i>
+            </button>
+          </div>
+          <a id="scoreLinkOpenBtn" class="btn btn-sm btn-success w-100" href="#" target="_blank" rel="noopener">
+            Buka halaman skor
+          </a>
+          <p class="small text-secondary mt-2 mb-0">Tamu scan QR atau buka link untuk mencatat poin.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -464,6 +497,7 @@
     cancel: (id) => @json(url('/sewa')) + '/' + id + '/cancel',
     items: (id) => @json(url('/sewa')) + '/' + id + '/items',
     itemsPay: (id) => @json(url('/sewa')) + '/' + id + '/items/pay',
+    scoreLink: (id) => @json(url('/sewa')) + '/' + id + '/skor-link',
     quickAddItem: @json(route('additional-items.quick-store')),
   };
 
@@ -475,6 +509,8 @@
   const occupiedActionModal = occupiedActionModalEl ? new bootstrap.Modal(occupiedActionModalEl) : null;
   const itemsModalEl = document.getElementById('itemsModal');
   const itemsModal = itemsModalEl ? new bootstrap.Modal(itemsModalEl) : null;
+  const scoreLinkModalEl = document.getElementById('scoreLinkModal');
+  const scoreLinkModal = scoreLinkModalEl ? new bootstrap.Modal(scoreLinkModalEl) : null;
 
   let checkinMeja = null;
   let checkoutRentalId = null;
@@ -624,6 +660,69 @@
     if (!occupiedBtn) return;
     occupiedActionModal?.hide();
     openCheckout(occupiedBtn);
+  });
+
+  document.getElementById('occupiedActionScoreBtn')?.addEventListener('click', function () {
+    if (!occupiedBtn) return;
+    occupiedActionModal?.hide();
+    openScoreLinkModal(occupiedBtn);
+  });
+
+  function openScoreLinkModal(btn) {
+    if (!btn || !scoreLinkModal) return;
+    const rentalId = btn.getAttribute('data-rental-id');
+    document.getElementById('scoreLinkMejaLabel').textContent = btn.getAttribute('data-meja-nama') || '';
+    document.getElementById('scoreLinkCustomer').textContent = btn.getAttribute('data-customer') || '';
+    const alertEl = document.getElementById('scoreLinkAlert');
+    const loadingEl = document.getElementById('scoreLinkLoading');
+    const contentEl = document.getElementById('scoreLinkContent');
+    alertEl.classList.add('d-none');
+    alertEl.textContent = '';
+    loadingEl.classList.remove('d-none');
+    contentEl.classList.add('d-none');
+    scoreLinkModal.show();
+
+    fetch(routes.scoreLink(rentalId), {
+      headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+      .then(function (r) {
+        loadingEl.classList.add('d-none');
+        if (!r.ok || !r.body || !r.body.score_url) {
+          alertEl.textContent = (r.body && r.body.message) ? r.body.message : 'Gagal memuat link skor.';
+          alertEl.classList.remove('d-none');
+          return;
+        }
+        const url = r.body.score_url;
+        document.getElementById('scoreLinkUrl').value = url;
+        document.getElementById('scoreLinkOpenBtn').href = url;
+        document.getElementById('scoreLinkQr').src =
+          'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(url);
+        contentEl.classList.remove('d-none');
+      })
+      .catch(function () {
+        loadingEl.classList.add('d-none');
+        alertEl.textContent = 'Jaringan bermasalah.';
+        alertEl.classList.remove('d-none');
+      });
+  }
+
+  document.getElementById('scoreLinkCopyBtn')?.addEventListener('click', function () {
+    const input = document.getElementById('scoreLinkUrl');
+    if (!input || !input.value) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(function () {
+        AppToast.show('Link skor disalin.', 'success');
+      }).catch(function () {
+        input.select();
+        document.execCommand('copy');
+        AppToast.show('Link skor disalin.', 'success');
+      });
+    } else {
+      input.select();
+      document.execCommand('copy');
+      AppToast.show('Link skor disalin.', 'success');
+    }
   });
 
   function filterItemRows(tableSelector, tokoId) {

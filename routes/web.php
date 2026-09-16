@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CashFlowController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GuestRentalController;
+use App\Http\Controllers\GuestRentalMahjongScoreController;
 use App\Http\Controllers\ManualRentalController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalController;
@@ -108,6 +109,20 @@ Route::prefix('guest')->name('guest.')->group(function () {
     Route::post('/sewa/rental/{rental}/stop', [GuestRentalController::class, 'stop'])
         ->middleware('throttle:30,1')
         ->name('rental.stop');
+
+    Route::get('/skor', [GuestRentalMahjongScoreController::class, 'index'])->name('mahjong-score.index');
+    Route::get('/skor/api', [GuestRentalMahjongScoreController::class, 'show'])
+        ->middleware('throttle:60,1')
+        ->name('mahjong-score.show');
+    Route::put('/skor/players', [GuestRentalMahjongScoreController::class, 'updatePlayers'])
+        ->middleware('throttle:30,1')
+        ->name('mahjong-score.players');
+    Route::post('/skor/hands', [GuestRentalMahjongScoreController::class, 'storeHand'])
+        ->middleware('throttle:60,1')
+        ->name('mahjong-score.hands.store');
+    Route::post('/skor/hands/void-last', [GuestRentalMahjongScoreController::class, 'voidLastHand'])
+        ->middleware('throttle:30,1')
+        ->name('mahjong-score.hands.void-last');
 });
 
 Route::post('/logout', [LoginController::class, 'destroy'])
@@ -157,6 +172,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/sewa/riwayat/{rental}', [RentalHistoryController::class, 'destroy'])
         ->middleware('admin')
         ->name('rental.history.destroy');
+    Route::get('/sewa/{rental}/skor-link', [RentalController::class, 'scoreLink'])->name('rental.score-link');
     Route::get('/sewa/{rental}/invoice', [RentalController::class, 'invoice'])->name('rental.invoice');
     Route::get('/sewa/{rental}/bukti', [RentalController::class, 'showBukti'])->name('rental.bukti');
     Route::get('/sewa/{rental}/items', [RentalController::class, 'items'])->name('rental.items.index');

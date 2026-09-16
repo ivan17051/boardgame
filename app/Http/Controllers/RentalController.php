@@ -11,6 +11,7 @@ use App\Models\RentalPromo;
 use App\Models\Toko;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
+use App\Support\RentalMahjongScoring;
 use App\Support\RentalPayment;
 use App\Support\TokoScope;
 use Carbon\CarbonInterface;
@@ -18,6 +19,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -84,7 +86,7 @@ class RentalController extends Controller
             'id_promo' => ['nullable', 'integer'],
         ]);
 
-        DB::transaction(function () use ($validated) {
+        $rental = DB::transaction(function () use ($validated) {
             $meja = Meja::query()
                 ->whereKey($validated['id_meja'])
                 ->where('status', 'active')
@@ -101,8 +103,9 @@ class RentalController extends Controller
 
             $now = now();
             $rate = RentalCheckout::rateForMeja($meja, $validated['tipe_customer']);
+            $guestToken = Str::random(48);
 
-            Rental::query()->create(array_merge([
+            $created = Rental::query()->create(array_merge([
                 'id_meja' => $meja->id,
                 'nama_customer' => $validated['nama_customer'],
                 'tipe_customer' => $validated['tipe_customer'],
@@ -114,12 +117,38 @@ class RentalController extends Controller
                 'total_harga_sewa' => null,
                 'total_harga_additional' => null,
                 'status' => 'active',
+                'guest_token' => $guestToken,
             ], $this->promoFieldsForRental($meja, $validated['id_promo'] ?? null, now())));
 
             $meja->update(['status' => 'rented']);
+
+            return $created;
         });
 
-        return response()->json(['message' => 'Check-in berhasil. Meja disewa.']);
+        $link = RentalMahjongScoring::ensureScoreLink($rental);
+
+        return response()->json([
+            'message' => 'Check-in berhasil. Meja disewa.',
+            'rental_id' => (int) $rental->id,
+            'score_url' => $link['score_url'],
+        ]);
+    }
+
+    public function scoreLink(Rental $rental): JsonResponse
+    {
+        TokoScope::authorizeRental($rental);
+
+        if (! $rental->isActive()) {
+            abort(404, 'Sewa tidak aktif.');
+        }
+
+        $link = RentalMahjongScoring::ensureScoreLink($rental);
+
+        return response()->json([
+            'rental_id' => (int) $rental->id,
+            'score_url' => $link['score_url'],
+            'access_token' => $link['access_token'],
+        ]);
     }
 
     public function items(Rental $rental): JsonResponse
@@ -450,7 +479,10 @@ class RentalController extends Controller
                 'total_harga' => $calc['total_harga'],
                 'total' => $calc['total_harga'],
                 'status' => 'completed',
+                'guest_token' => null,
             ]);
+
+            RentalMahjongScoring::closeForRental((int) $locked->id);
 
             RentalAdditionalItem::query()->where('id_rental', $locked->id)->delete();
             foreach ($calc['additional_lines'] as $line) {
