@@ -64,12 +64,12 @@ class GuestRentalMahjongScoreController extends Controller
         $validated = $request->validate([
             'scores' => ['required', 'array', 'size:'.RentalMahjongScoring::PLAYER_COUNT],
             'scores.*.seat' => ['required', 'integer', 'min:1', 'max:'.RentalMahjongScoring::PLAYER_COUNT],
-            'scores.*.poin' => ['required', 'integer', 'min:-999999', 'max:999999'],
+            'scores.*.poin' => ['nullable', 'integer', 'min:-999999', 'max:999999'],
             'winner_seat' => ['nullable', 'integer', 'min:1', 'max:'.RentalMahjongScoring::PLAYER_COUNT],
         ], [
             'scores.required' => 'Poin wajib diisi.',
             'scores.size' => 'Harus mengisi poin untuk '.RentalMahjongScoring::PLAYER_COUNT.' pemain.',
-            'scores.*.poin.required' => 'Poin wajib angka.',
+            'scores.*.poin.integer' => 'Poin wajib angka.',
         ]);
 
         $session = RentalMahjongScoring::appendHand(

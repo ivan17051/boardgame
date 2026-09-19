@@ -189,12 +189,16 @@ class RentalMahjongScoring
                     'scores' => ['Data poin kursi tidak valid.'],
                 ]);
             }
-            if (! array_key_exists('poin', $row) || ! is_numeric($row['poin'])) {
+            $poinRaw = $row['poin'] ?? 0;
+            if ($poinRaw === '' || $poinRaw === null) {
+                $poinRaw = 0;
+            }
+            if (! is_numeric($poinRaw)) {
                 throw ValidationException::withMessages([
                     'scores' => ['Poin kursi '.$seat.' wajib angka.'],
                 ]);
             }
-            $bySeat[$seat] = (int) $row['poin'];
+            $bySeat[$seat] = (int) $poinRaw;
         }
 
         if (count($bySeat) !== self::PLAYER_COUNT) {

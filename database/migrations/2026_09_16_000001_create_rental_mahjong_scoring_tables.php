@@ -10,8 +10,8 @@ class CreateRentalMahjongScoringTables extends Migration
     {
         Schema::create('rental_mahjong_session', function (Blueprint $table) {
             $table->increments('id');
-            $table->integer('rental_id')->unique();
-            $table->integer('id_meja')->nullable();
+            $table->unsignedBigInteger('rental_id')->unique();
+            $table->unsignedBigInteger('id_meja')->nullable();
             $table->string('status', 20)->default('open');
             $table->string('access_token', 64)->unique();
             $table->timestamp('closed_at')->nullable();

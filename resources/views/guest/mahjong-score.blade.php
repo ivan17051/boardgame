@@ -105,6 +105,56 @@
       font-size: 1.05rem;
       min-height: 2.6rem;
     }
+    .score-player-row {
+      display: grid;
+      grid-template-columns: 2.2rem 1fr;
+      gap: 0.5rem;
+      align-items: start;
+      margin-bottom: 0.75rem;
+    }
+    .score-player-name {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--score-brand-dark);
+      margin-bottom: 0.2rem;
+    }
+    .score-player-poin-label {
+      font-size: 0.78rem;
+      color: #6c757d;
+      margin-bottom: 0.2rem;
+    }
+    .history-table {
+      width: 100%;
+      margin: 0;
+      font-size: 0.8rem;
+    }
+    .history-table th,
+    .history-table td {
+      padding: 0.45rem 0.35rem;
+      vertical-align: middle;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+    .history-table th:first-child,
+    .history-table td:first-child {
+      text-align: left;
+      white-space: nowrap;
+    }
+    .history-table thead th {
+      background: #f3f8f5;
+      font-weight: 700;
+      color: var(--score-brand-dark);
+      border-bottom: 1px solid rgba(0, 97, 49, 0.12);
+    }
+    .history-table tbody tr.voided {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+    .history-table .is-winner {
+      font-weight: 700;
+      color: var(--score-brand-dark);
+      background: rgba(255, 193, 7, 0.18);
+    }
     .winner-toggle {
       display: flex;
       flex-wrap: wrap;
@@ -114,24 +164,6 @@
     .winner-toggle .btn {
       flex: 1 1 calc(50% - 0.4rem);
       min-height: 2.4rem;
-    }
-    .hand-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    .hand-list li {
-      border-top: 1px solid #eef2f0;
-      padding: 0.65rem 0;
-      font-size: 0.875rem;
-    }
-    .hand-list li.voided {
-      opacity: 0.55;
-      text-decoration: line-through;
-    }
-    .hand-list .hand-scores {
-      color: #495057;
-      margin-top: 0.2rem;
     }
     .alert-slot:empty {
       display: none;
@@ -188,7 +220,7 @@
       <div class="score-card d-none" id="handCard">
         <h2>Ronde baru</h2>
         <div id="scoreInputs"></div>
-        <div class="small text-secondary mb-1">Pemenang (opsional)</div>
+        <div class="small text-secondary mb-1">Klik nama pemain untuk menandai pemenang (opsional)</div>
         <div class="winner-toggle" id="winnerToggle"></div>
         <button type="button" class="btn btn-primary w-100" id="saveHandBtn">
           <i class="bi bi-plus-lg me-1"></i>Simpan ronde
@@ -202,7 +234,14 @@
             Batalkan terakhir
           </button>
         </div>
-        <ul class="hand-list" id="handList"></ul>
+        <div class="table-responsive">
+          <table class="history-table d-none" id="handTable">
+            <thead>
+              <tr id="handTableHead"></tr>
+            </thead>
+            <tbody id="handTableBody"></tbody>
+          </table>
+        </div>
         <p class="small text-secondary mb-0 d-none" id="handEmpty">Belum ada ronde.</p>
       </div>
     </div>
@@ -246,7 +285,9 @@
       winnerToggle: document.getElementById('winnerToggle'),
       saveHandBtn: document.getElementById('saveHandBtn'),
       historyCard: document.getElementById('historyCard'),
-      handList: document.getElementById('handList'),
+      handTable: document.getElementById('handTable'),
+      handTableHead: document.getElementById('handTableHead'),
+      handTableBody: document.getElementById('handTableBody'),
       handEmpty: document.getElementById('handEmpty'),
       voidLastBtn: document.getElementById('voidLastBtn'),
     };
@@ -299,6 +340,11 @@
     }
 
     function renderSetup(playersReady, playersLocked, canWrite) {
+      if (playersReady) {
+        els.setupCard.classList.add('d-none');
+        return;
+      }
+
       const count = (state && state.player_count) || 4;
       const existing = (state && state.players) || [];
       els.playerInputs.innerHTML = '';
@@ -318,9 +364,7 @@
       els.setupCard.classList.remove('d-none');
       const hint = els.setupCard.querySelector('p');
       if (hint) {
-        hint.textContent = playersLocked
-          ? 'Nama pemain terkunci setelah ada ronde.'
-          : 'Isi 4 nama / julukan di meja ini.';
+        hint.textContent = 'Isi 4 nama / julukan di meja ini.';
       }
     }
 
@@ -346,38 +390,67 @@
       els.scoreInputs.innerHTML = '';
       players.forEach(function (p) {
         const row = document.createElement('div');
-        row.className = 'seat-row';
+        row.className = 'score-player-row';
         row.innerHTML =
           '<span class="seat-no">' + p.seat + '</span>' +
-          '<input type="number" inputmode="numeric" class="form-control hand-poin" data-seat="' + p.seat + '" ' +
-          'placeholder="' + escapeHtml(p.nama) + '" value="" />';
+          '<div>' +
+            '<div class="score-player-name">' + escapeHtml(p.nama) + '</div>' +
+            '<input type="number" inputmode="numeric" class="form-control hand-poin" data-seat="' + p.seat + '" ' +
+            'placeholder="Isi Poin" value="" />' +
+          '</div>';
         els.scoreInputs.appendChild(row);
       });
       winnerSeat = null;
       els.winnerToggle.innerHTML = players.map(function (p) {
         return '<button type="button" class="btn btn-outline-secondary btn-sm js-winner" data-seat="' + p.seat + '">' +
           escapeHtml(p.nama) + '</button>';
-      }).join('') + '<button type="button" class="btn btn-outline-secondary btn-sm js-winner" data-seat="">Tanpa pemenang</button>';
+      }).join('');
     }
 
     function renderHistory(canWrite) {
       const hands = (state && state.hands) || [];
       const players = (state && state.players) || [];
-      const nameBySeat = {};
-      players.forEach(function (p) { nameBySeat[p.seat] = p.nama; });
+      const seats = players.map(function (p) { return p.seat; });
+
+      if (!players.length) {
+        els.historyCard.classList.add('d-none');
+        return;
+      }
 
       els.historyCard.classList.remove('d-none');
       const activeHands = hands.filter(function (h) { return !h.voided; });
       els.voidLastBtn.classList.toggle('d-none', !(canWrite && activeHands.length));
       els.handEmpty.classList.toggle('d-none', hands.length > 0);
-      els.handList.innerHTML = hands.map(function (h) {
-        const scoresTxt = (h.scores || []).map(function (s) {
-          return (nameBySeat[s.seat] || ('#' + s.seat)) + ': ' + (s.poin === null ? '-' : s.poin);
-        }).join(' · ');
-        const winner = h.winner_seat ? ' · Menang: ' + (nameBySeat[h.winner_seat] || h.winner_seat) : '';
-        return '<li class="' + (h.voided ? 'voided' : '') + '">' +
-          '<strong>Ronde ' + h.hand_no + '</strong>' + (h.voided ? ' (batal)' : '') + winner +
-          '<div class="hand-scores">' + escapeHtml(scoresTxt) + '</div></li>';
+      els.handTable.classList.toggle('d-none', hands.length === 0);
+
+      if (!players.length) {
+        els.handTableHead.innerHTML = '';
+        els.handTableBody.innerHTML = '';
+        return;
+      }
+
+      els.handTableHead.innerHTML = '<th>Ronde</th>' + players.map(function (p) {
+        return '<th>' + escapeHtml(p.nama) + '</th>';
+      }).join('');
+
+      const orderedHands = hands.slice().sort(function (a, b) {
+        return (a.hand_no || 0) - (b.hand_no || 0);
+      });
+
+      els.handTableBody.innerHTML = orderedHands.map(function (h) {
+        const poinBySeat = {};
+        (h.scores || []).forEach(function (s) {
+          poinBySeat[s.seat] = s.poin;
+        });
+        const cells = seats.map(function (seat) {
+          const poin = poinBySeat[seat];
+          const isWinner = h.winner_seat && Number(h.winner_seat) === Number(seat);
+          return '<td class="' + (isWinner ? 'is-winner' : '') + '">' +
+            (poin === null || poin === undefined ? '-' : poin) +
+            '</td>';
+        }).join('');
+        const rondeLabel = h.voided ? (h.hand_no + ' (batal)') : String(h.hand_no);
+        return '<tr class="' + (h.voided ? 'voided' : '') + '"><td>' + escapeHtml(rondeLabel) + '</td>' + cells + '</tr>';
       }).join('');
     }
 
@@ -454,13 +527,13 @@
       const btn = e.target.closest('.js-winner');
       if (!btn) return;
       const seatAttr = btn.getAttribute('data-seat');
-      winnerSeat = seatAttr === '' || seatAttr == null ? null : parseInt(seatAttr, 10);
+      const seat = seatAttr === '' || seatAttr == null ? null : parseInt(seatAttr, 10);
+      winnerSeat = winnerSeat === seat ? null : seat;
       Array.prototype.forEach.call(els.winnerToggle.querySelectorAll('.js-winner'), function (b) {
-        b.classList.remove('btn-success');
-        b.classList.add('btn-outline-secondary');
+        const isOn = winnerSeat != null && String(b.getAttribute('data-seat')) === String(winnerSeat);
+        b.classList.toggle('btn-success', isOn);
+        b.classList.toggle('btn-outline-secondary', !isOn);
       });
-      btn.classList.remove('btn-outline-secondary');
-      btn.classList.add('btn-success');
     });
 
     els.saveHandBtn.addEventListener('click', function () {
@@ -470,13 +543,18 @@
       for (let i = 0; i < inputs.length; i++) {
         const inp = inputs[i];
         const raw = inp.value.trim();
-        if (raw === '' || Number.isNaN(Number(raw))) {
-          showError('Isi poin semua pemain (angka).');
-          return;
+        let poin = 0;
+        if (raw !== '') {
+          poin = parseInt(raw, 10);
+          if (Number.isNaN(poin)) {
+            showError('Poin harus berupa angka.');
+            inp.focus();
+            return;
+          }
         }
         scores.push({
           seat: parseInt(inp.getAttribute('data-seat'), 10),
-          poin: parseInt(raw, 10),
+          poin: poin,
         });
       }
       const body = { scores: scores };

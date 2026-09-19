@@ -115,7 +115,7 @@ class RentalController extends Controller
                 'harga' => $rate,
                 'total_harga' => null,
                 'total_harga_sewa' => null,
-                'total_harga_additional' => null,
+                'total_harga_additional' => 0,
                 'status' => 'active',
                 'guest_token' => $guestToken,
             ], $this->promoFieldsForRental($meja, $validated['id_promo'] ?? null, now())));
