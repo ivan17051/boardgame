@@ -89,40 +89,95 @@
 
       <div class="alert alert-{{ ! empty($justRegistered) ? 'success' : 'info' }} mb-4">
         <i class="bi bi-info-circle me-1"></i>
-        @if (! empty($justRegistered))
+        @if (! empty($justRegistered) && ! empty($isGroupMode))
+          Pendaftaran {{ strtolower($rosterNounTitle ?? 'tim') }} <strong>{{ $namaGrup ?: '—' }}</strong> berhasil dikirim.
+        @elseif (! empty($justRegistered))
           Pendaftaran untuk nomor HP <strong>{{ $check['no_hp'] ?? '—' }}</strong> berhasil dikirim.
+        @elseif (! empty($isGroupMode) && ! empty($namaGrup))
+          Nomor HP <strong>{{ $check['no_hp'] ?? '—' }}</strong> sudah terdaftar di {{ strtolower($rosterNounTitle ?? 'tim') }} <strong>{{ $namaGrup }}</strong>.
         @else
           Nomor HP <strong>{{ $check['no_hp'] ?? '—' }}</strong> sudah terdaftar di turnamen ini.
         @endif
       </div>
 
-      @if (! empty($check['foto_url']))
-        <div class="text-center mb-4">
-          <img src="{{ $check['foto_url'] }}" alt="Foto {{ $check['nama'] ?? 'pemain' }}" class="player-foto" />
-        </div>
+      @if (! empty($isGroupMode) && ! empty($namaGrup))
+        <dl class="row status-list mb-3">
+          <dt class="col-sm-4">Nama {{ $rosterNounTitle ?? 'Tim' }}</dt>
+          <dd class="col-sm-8">{{ $namaGrup }}</dd>
+        </dl>
       @endif
 
-      <dl class="row status-list mb-0">
-        <dt class="col-sm-4">Nama</dt>
-        <dd class="col-sm-8">{{ $check['nama'] ?? '—' }}</dd>
-
-        <dt class="col-sm-4">Jenis kelamin</dt>
-        <dd class="col-sm-8">{{ $genderLabel }}</dd>
-
-        <dt class="col-sm-4">Status pendaftaran</dt>
-        <dd class="col-sm-8">
-          <span class="status-badge">{{ $statusLabel }}</span>
-        </dd>
-
-        @if (! empty($check['bukti_bayar_url']))
-          <dt class="col-sm-4">Bukti bayar</dt>
-          <dd class="col-sm-8">
-            <a href="{{ $check['bukti_bayar_url'] }}" target="_blank" rel="noopener noreferrer">
-              Lihat bukti bayar <i class="bi bi-box-arrow-up-right ms-1"></i>
-            </a>
-          </dd>
+      @if (! empty($isGroupMode) && ! empty($members) && count($members) > 1)
+        <div class="mb-4">
+          <h2 class="h6 fw-bold mb-3" style="color: var(--brand-dark);">Anggota {{ $rosterNounTitle ?? 'Tim' }}</h2>
+          <ul class="list-group">
+            @foreach ($members as $member)
+              <li class="list-group-item d-flex align-items-center gap-3">
+                @if (! empty($member['foto_url']))
+                  <img src="{{ $member['foto_url'] }}" alt="{{ $member['nama'] ?? 'Pemain' }}" class="rounded-circle" style="width:40px;height:40px;object-fit:cover;" />
+                @else
+                  <span class="rounded-circle bg-light border d-inline-flex align-items-center justify-content-center" style="width:40px;height:40px;">
+                    <i class="bi bi-person text-secondary"></i>
+                  </span>
+                @endif
+                <div class="flex-grow-1">
+                  <div class="fw-semibold">{{ $member['nama'] ?? '—' }}</div>
+                  <div class="small text-secondary">{{ $member['no_hp'] ?? '' }}</div>
+                </div>
+                @if (! empty($member['status']))
+                  <span class="status-badge">{{ \App\Support\BornpadelMahjongTournaments::registrationStatusLabel($member['status']) }}</span>
+                @endif
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      @else
+        @if (! empty($check['foto_url']))
+          <div class="text-center mb-4">
+            <img src="{{ $check['foto_url'] }}" alt="Foto {{ $check['nama'] ?? 'pemain' }}" class="player-foto" />
+          </div>
         @endif
-      </dl>
+
+        <dl class="row status-list mb-0">
+          <dt class="col-sm-4">Nama</dt>
+          <dd class="col-sm-8">{{ $check['nama'] ?? '—' }}</dd>
+
+          <dt class="col-sm-4">Jenis kelamin</dt>
+          <dd class="col-sm-8">{{ $genderLabel }}</dd>
+
+          <dt class="col-sm-4">Status pendaftaran</dt>
+          <dd class="col-sm-8">
+            <span class="status-badge">{{ $statusLabel }}</span>
+          </dd>
+
+          @if (! empty($check['bukti_bayar_url']))
+            <dt class="col-sm-4">Bukti bayar</dt>
+            <dd class="col-sm-8">
+              <a href="{{ $check['bukti_bayar_url'] }}" target="_blank" rel="noopener noreferrer">
+                Lihat bukti bayar <i class="bi bi-box-arrow-up-right ms-1"></i>
+              </a>
+            </dd>
+          @endif
+        </dl>
+      @endif
+
+      @if (! empty($isGroupMode) && ! empty($members) && count($members) > 1)
+        <dl class="row status-list mb-0">
+          <dt class="col-sm-4">Status pendaftaran</dt>
+          <dd class="col-sm-8">
+            <span class="status-badge">{{ $statusLabel }}</span>
+          </dd>
+
+          @if (! empty($check['bukti_bayar_url']))
+            <dt class="col-sm-4">Bukti bayar</dt>
+            <dd class="col-sm-8">
+              <a href="{{ $check['bukti_bayar_url'] }}" target="_blank" rel="noopener noreferrer">
+                Lihat bukti bayar <i class="bi bi-box-arrow-up-right ms-1"></i>
+              </a>
+            </dd>
+          @endif
+        </dl>
+      @endif
 
       @if (! empty($canUploadReceipt))
         <div class="upload-box">

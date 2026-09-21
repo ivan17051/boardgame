@@ -22,6 +22,9 @@
     box-shadow: 0 8px 24px rgba(0, 60, 30, 0.06);
     overflow: hidden;
   }
+  .register-card.is-wide {
+    max-width: 640px;
+  }
   .register-card .card-header {
     background: rgba(0, 97, 49, 0.06);
     font-weight: 700;
@@ -61,6 +64,14 @@
 @endpush
 
 @section('content')
+  @php
+    $isGroupMode = $isGroupMode ?? false;
+    $groupSize = (int) ($groupSize ?? 1);
+    $players = $players ?? [];
+    $rosterNounTitle = $rosterNounTitle ?? 'Tim';
+    $namaGrup = $namaGrup ?? '';
+  @endphp
+
   <header class="page-header text-center mb-4">
     <a href="{{ route('public.mahjong-tournaments.register', $tournament['id']) }}" class="btn btn-sm btn-outline-secondary mb-3">
       <i class="bi bi-arrow-left me-1"></i>Ganti nomor HP
@@ -73,6 +84,11 @@
         {{ \Carbon\Carbon::parse($tournament['tanggal'])->locale('id')->translatedFormat('d F Y') }}
       </p>
     @endif
+    @if ($isGroupMode)
+      <p class="small mb-0 mt-2">
+        <span class="badge text-bg-success">Pendaftaran Satu {{ $rosterNounTitle }} ({{ $groupSize }})</span>
+      </p>
+    @endif
     @include('public.partials.tournament-syarat', ['tournament' => $tournament])
   </header>
 
@@ -82,12 +98,12 @@
     'activeTab' => 'register',
   ])
 
-  <div class="card register-card">
+  <div class="card register-card {{ $isGroupMode ? 'is-wide' : '' }}">
     <div class="card-header py-3">
-      Formulir Pendaftaran Pemain
+      {{ $isGroupMode ? 'Formulir Pendaftaran '.$rosterNounTitle : 'Formulir Pendaftaran Pemain' }}
     </div>
     <div class="card-body p-4">
-      @if (! empty($pemainExists))
+      @if (! $isGroupMode && ! empty($pemainExists))
         <div class="alert alert-info py-2 small">
           Nama dan jenis kelamin sudah diisi dari data pemain. Anda dapat mengubahnya jika perlu.
         </div>
@@ -105,86 +121,43 @@
       >
         @csrf
         <input type="hidden" name="id_turnamen" value="{{ $tournament['id'] }}" />
-        <input type="hidden" name="no_hp" value="{{ $prefillNoHp }}" />
+        <input type="hidden" name="registration_mode" value="{{ $isGroupMode ? 'group' : 'single' }}" />
+        @if (! empty($idKategori))
+          <input type="hidden" name="id_kategori" value="{{ $idKategori }}" />
+        @endif
 
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Nomor HP</label>
-          <input type="text" class="form-control bg-light" value="{{ $prefillNoHp }}" readonly />
-        </div>
-
-        <div class="mb-3">
-          <label for="nama" class="form-label fw-semibold">Nama Lengkap <span class="text-danger">*</span></label>
-          <input
-            type="text"
-            name="nama"
-            id="nama"
-            class="form-control @error('nama') is-invalid @enderror"
-            value="{{ $prefillNama }}"
-            placeholder="Masukkan nama lengkap"
-            required
-            autocomplete="name"
-          />
-          @error('nama')
-            <div class="invalid-feedback">{{ $message }}</div>
-          @enderror
-        </div>
-
-        <div class="mb-3">
-          <label for="gender" class="form-label fw-semibold">Jenis Kelamin <span class="text-danger">*</span></label>
-          <select
-            name="gender"
-            id="gender"
-            class="form-select @error('gender') is-invalid @enderror"
-            required
-          >
-            <option value="" disabled {{ $prefillGender ? '' : 'selected' }}>Pilih jenis kelamin</option>
-            <option value="male" {{ $prefillGender === 'male' ? 'selected' : '' }}>Laki-laki</option>
-            <option value="female" {{ $prefillGender === 'female' ? 'selected' : '' }}>Perempuan</option>
-          </select>
-          @error('gender')
-            <div class="invalid-feedback">{{ $message }}</div>
-          @enderror
-        </div>
-
-        <div class="mb-4">
-          <label for="tgl_lahir" class="form-label fw-semibold">
-            Tanggal Lahir <span class="text-muted fw-normal">(opsional)</span>
-          </label>
-          <input
-            type="date"
-            name="tgl_lahir"
-            id="tgl_lahir"
-            class="form-control @error('tgl_lahir') is-invalid @enderror"
-            value="{{ old('tgl_lahir') }}"
-            max="{{ date('Y-m-d', strtotime('-1 day')) }}"
-          />
-          @error('tgl_lahir')
-            <div class="invalid-feedback">{{ $message }}</div>
-          @enderror
-        </div>
-
-        <div class="mb-4">
-          <label for="foto" class="form-label fw-semibold">
-            Profile Picture <span class="text-muted fw-normal">(opsional)</span>
-          </label>
-          <input
-            type="file"
-            name="foto"
-            id="foto"
-            class="form-control @error('foto') is-invalid @enderror"
-            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-          />
-          <div class="form-text">Format JPG, PNG, atau WebP. Maks. 5 MB.</div>
-          @error('foto')
-            <div class="invalid-feedback">{{ $message }}</div>
-          @enderror
-          <div class="foto-preview" id="fotoPreview">
-            <img src="" alt="Pratinjau foto" id="fotoPreviewImg" />
+        @if ($isGroupMode)
+          <input type="hidden" name="nama_grup" value="{{ old('nama_grup', $namaGrup) }}" />
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Nama {{ $rosterNounTitle }}</label>
+            <input type="text" class="form-control bg-light" value="{{ old('nama_grup', $namaGrup) }}" readonly />
+            @error('nama_grup')
+              <div class="text-danger small mt-1">{{ $message }}</div>
+            @enderror
           </div>
-        </div>
+
+          @foreach ($players as $index => $player)
+            @include('public.partials.mahjong-register-player-fields', [
+              'index' => $index,
+              'player' => $player,
+              'showHeading' => true,
+            ])
+          @endforeach
+        @else
+          @include('public.partials.mahjong-register-player-fields', [
+            'index' => 0,
+            'player' => [
+              'no_hp' => $prefillNoHp,
+              'nama' => $prefillNama,
+              'gender' => $prefillGender,
+              'pemain_exists' => false,
+            ],
+            'showHeading' => false,
+          ])
+        @endif
 
         <button type="submit" class="btn btn-primary btn-submit w-100">
-          <i class="bi bi-send me-1"></i>Kirim Pendaftaran
+          <i class="bi bi-send me-1"></i>{{ $isGroupMode ? 'Kirim Pendaftaran Tim' : 'Kirim Pendaftaran' }}
         </button>
       </form>
     </div>
@@ -194,25 +167,26 @@
 @push('scripts')
 <script>
   (function () {
-    const input = document.getElementById('foto');
-    const preview = document.getElementById('fotoPreview');
-    const previewImg = document.getElementById('fotoPreviewImg');
-    if (!input || !preview || !previewImg) return;
+    document.querySelectorAll('.js-foto-input').forEach((input) => {
+      const preview = document.querySelector(input.dataset.preview || '');
+      const previewImg = document.querySelector(input.dataset.previewImg || '');
+      if (!preview || !previewImg) return;
 
-    input.addEventListener('change', () => {
-      const file = input.files && input.files[0];
-      if (!file || !file.type.startsWith('image/')) {
-        preview.style.display = 'none';
-        previewImg.src = '';
-        return;
-      }
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
+        if (!file || !file.type.startsWith('image/')) {
+          preview.style.display = 'none';
+          previewImg.src = '';
+          return;
+        }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previewImg.src = e.target.result;
-        preview.style.display = 'block';
-      };
-      reader.readAsDataURL(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          previewImg.src = e.target.result;
+          preview.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      });
     });
   })();
 </script>

@@ -247,28 +247,53 @@ class PublicMahjongTournamentController extends Controller
     public function showRegister(Request $request, int $id): View
     {
         $tournament = $this->openTournamentOrAbort($id);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
 
         return view('public.mahjong-register-check', [
             'tournament' => $tournament,
-            'idKategori' => $this->resolveKategoriId($request, $tournament),
+            'idKategori' => $idKategori,
+            'allowsGroup' => BornpadelMahjongTournaments::allowsGroupRegistration($tournament),
+            'groupSize' => BornpadelMahjongTournaments::registrationRosterSize($tournament, $idKategori),
+            'rosterNoun' => BornpadelMahjongTournaments::registrationRosterNoun($tournament),
+            'rosterNounTitle' => BornpadelMahjongTournaments::registrationRosterNoun($tournament, true),
         ]);
     }
 
     public function checkRegister(Request $request, int $id): RedirectResponse
     {
         $tournament = $this->openTournamentOrAbort($id);
+        $allowsGroup = BornpadelMahjongTournaments::allowsGroupRegistration($tournament);
 
-        $validated = $request->validate([
+        $rules = [
             'no_hp' => ['required', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'],
             'no_hp_country' => ['nullable', 'string', 'max:8'],
             'no_hp_local' => ['nullable', 'string', 'max:20'],
             'id_kategori' => ['nullable', 'integer'],
-        ], [
+            'registration_mode' => [$allowsGroup ? 'required' : 'nullable', 'in:single,group'],
+            'nama_grup' => ['nullable', 'string', 'max:255'],
+        ];
+
+        $idKategori = $this->resolveKategoriId($request, $tournament);
+        $groupSize = BornpadelMahjongTournaments::registrationRosterSize($tournament, $idKategori);
+        $isGroupMode = $allowsGroup && $request->input('registration_mode') === 'group';
+
+        if ($isGroupMode) {
+            $rules['nama_grup'] = ['required', 'string', 'max:255'];
+            for ($n = 2; $n <= $groupSize; $n++) {
+                $rules['no_hp_'.$n] = ['required', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'];
+                $rules['no_hp_'.$n.'_country'] = ['nullable', 'string', 'max:8'];
+                $rules['no_hp_'.$n.'_local'] = ['nullable', 'string', 'max:20'];
+            }
+        }
+
+        $rosterNoun = BornpadelMahjongTournaments::registrationRosterNoun($tournament);
+        $validated = $request->validate($rules, [
             'no_hp.required' => 'Nomor HP wajib diisi.',
             'no_hp.regex' => 'Format nomor HP tidak valid.',
+            'nama_grup.required' => 'Nama '.$rosterNoun.' wajib diisi.',
         ]);
 
-        $noHp = $this->normalizedPhone($request, $validated['no_hp']);
+        $noHp = $this->normalizedPhone($request, $validated['no_hp'] ?? '', 'no_hp');
 
         if ($noHp === '') {
             return back()
@@ -276,44 +301,105 @@ class PublicMahjongTournamentController extends Controller
                 ->withErrors(['no_hp' => 'Nomor HP wajib diisi.']);
         }
 
-        $idKategori = $this->resolveKategoriId($request, $tournament);
-
         if (! empty($tournament['has_multiple_kategori']) && ! $idKategori) {
             return back()
                 ->withInput()
                 ->withErrors(['id_kategori' => 'Pilih kategori kompetisi terlebih dahulu.']);
         }
 
-        $result = BornpadelMahjongTournaments::checkRegistration($id, $noHp, $idKategori);
+        $phones = [$noHp];
+        $phoneFields = ['no_hp'];
 
-        if ($result['error'] !== null || $result['data'] === null) {
-            return back()
-                ->withInput()
-                ->withErrors(['no_hp' => $result['error'] ?? 'Gagal memeriksa nomor HP.']);
+        if ($isGroupMode) {
+            for ($n = 2; $n <= $groupSize; $n++) {
+                $field = 'no_hp_'.$n;
+                $phone = $this->normalizedPhone($request, $validated[$field] ?? '', $field);
+                if ($phone === '') {
+                    return back()
+                        ->withInput()
+                        ->withErrors([$field => 'Nomor HP pemain '.$n.' wajib diisi.']);
+                }
+                $phones[] = $phone;
+                $phoneFields[] = $field;
+            }
+
+            $seen = [];
+            foreach ($phones as $index => $phone) {
+                if (in_array($phone, $seen, true)) {
+                    return back()
+                        ->withInput()
+                        ->withErrors([$phoneFields[$index] => 'Nomor HP harus unik untuk setiap pemain dalam '.$rosterNoun.'.']);
+                }
+                $seen[] = $phone;
+            }
+
+            $nameCheck = BornpadelMahjongTournaments::assertGroupNameAvailable(
+                $id,
+                (string) $validated['nama_grup'],
+                $idKategori
+            );
+            if (! $nameCheck['ok']) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['nama_grup' => $nameCheck['error']]);
+            }
         }
 
-        $data = $result['data'];
-        $pemain = is_array($data['pemain'] ?? null) ? $data['pemain'] : null;
-        $registration = is_array($data['registration'] ?? null) ? $data['registration'] : null;
+        $players = [];
+        foreach ($phones as $index => $phone) {
+            $result = BornpadelMahjongTournaments::checkRegistration($id, $phone, $idKategori);
 
+            if ($result['error'] !== null || $result['data'] === null) {
+                return back()
+                    ->withInput()
+                    ->withErrors([$phoneFields[$index] => $result['error'] ?? 'Gagal memeriksa nomor HP.']);
+            }
+
+            $data = $result['data'];
+            if (! empty($data['registered'])) {
+                if (! $isGroupMode) {
+                    $sessionData = $this->sessionFromCheck($data, $noHp, $idKategori, 'single');
+                    session()->put($this->registerSessionKey($id), $sessionData);
+
+                    return redirect()->route('public.mahjong-tournaments.register.status', $tournament['id']);
+                }
+
+                $label = $index === 0 ? 'pemain 1' : 'pemain '.($index + 1);
+
+                return back()
+                    ->withInput()
+                    ->withErrors([$phoneFields[$index] => 'Nomor HP '.$label.' sudah terdaftar pada kategori ini.']);
+            }
+
+            $pemain = is_array($data['pemain'] ?? null) ? $data['pemain'] : null;
+            $players[] = [
+                'no_hp' => (string) ($data['no_hp'] ?? $phone),
+                'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
+                'nama' => $pemain['nama'] ?? null,
+                'gender' => $pemain['gender'] ?? null,
+                'foto_url' => $pemain['foto_url'] ?? null,
+            ];
+        }
+
+        $first = $players[0];
         $sessionData = [
-            'no_hp' => (string) ($data['no_hp'] ?? $noHp),
-            'id_kategori' => $data['kategori_id'] ?? $idKategori,
-            'registered' => (bool) ($data['registered'] ?? false),
-            'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
-            'nama' => $pemain['nama'] ?? null,
-            'gender' => $pemain['gender'] ?? null,
-            'foto_url' => $pemain['foto_url'] ?? null,
-            'registration_status' => $registration['status'] ?? null,
-            'peserta_id' => $registration['peserta_id'] ?? null,
-            'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
+            'registration_mode' => $isGroupMode ? 'group' : 'single',
+            'nama_grup' => $isGroupMode ? trim((string) $validated['nama_grup']) : null,
+            'no_hp' => $first['no_hp'],
+            'id_kategori' => $idKategori,
+            'registered' => false,
+            'pemain_exists' => $first['pemain_exists'],
+            'nama' => $first['nama'],
+            'gender' => $first['gender'],
+            'foto_url' => $first['foto_url'],
+            'registration_status' => null,
+            'peserta_id' => null,
+            'bukti_bayar_url' => null,
+            'players' => $players,
+            'group' => null,
         ];
 
         session()->put($this->registerSessionKey($id), $sessionData);
-
-        if ($sessionData['registered']) {
-            return redirect()->route('public.mahjong-tournaments.register.status', $tournament['id']);
-        }
 
         return redirect()->route('public.mahjong-tournaments.register.form', $tournament['id']);
     }
@@ -334,14 +420,27 @@ class PublicMahjongTournamentController extends Controller
             return redirect()->route('public.mahjong-tournaments.register.status', $id);
         }
 
+        $idKategori = $session['id_kategori'] ?? $tournament['default_kategori_id'] ?? null;
+        $isGroupMode = ($session['registration_mode'] ?? 'single') === 'group'
+            && BornpadelMahjongTournaments::allowsGroupRegistration($tournament);
+        $groupSize = $isGroupMode
+            ? BornpadelMahjongTournaments::registrationRosterSize($tournament, $idKategori)
+            : 1;
+        $players = $this->sessionPlayers($session, $groupSize);
+
         return view('public.mahjong-register', [
             'tournament' => $tournament,
-            'idKategori' => $session['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
+            'idKategori' => $idKategori,
             'check' => $session,
-            'prefillNama' => old('nama', $session['nama'] ?? ''),
-            'prefillGender' => old('gender', $session['gender'] ?? ''),
-            'prefillNoHp' => old('no_hp', $session['no_hp'] ?? ''),
-            'pemainExists' => ! empty($session['pemain_exists']),
+            'isGroupMode' => $isGroupMode,
+            'groupSize' => $groupSize,
+            'rosterNounTitle' => BornpadelMahjongTournaments::registrationRosterNoun($tournament, true),
+            'namaGrup' => $session['nama_grup'] ?? '',
+            'players' => $players,
+            'prefillNama' => old('nama', $players[0]['nama'] ?? ''),
+            'prefillGender' => old('gender', $players[0]['gender'] ?? ''),
+            'prefillNoHp' => old('no_hp', $players[0]['no_hp'] ?? ''),
+            'pemainExists' => ! empty($players[0]['pemain_exists']),
         ]);
     }
 
@@ -378,10 +477,22 @@ class PublicMahjongTournamentController extends Controller
         }
         session()->put($this->registerSessionKey($id), $session);
 
+        $isGroupMode = ($session['registration_mode'] ?? 'single') === 'group'
+            || ! empty($session['nama_grup'])
+            || ! empty($session['group']);
+        $group = is_array($session['group'] ?? null) ? $session['group'] : null;
+        $members = is_array($group['members'] ?? null)
+            ? $group['members']
+            : (is_array($session['players'] ?? null) ? $session['players'] : []);
+
         return view('public.mahjong-register-status', [
             'tournament' => $tournament,
             'idKategori' => $session['id_kategori'] ?? $tournament['default_kategori_id'] ?? null,
             'check' => $session,
+            'isGroupMode' => $isGroupMode,
+            'namaGrup' => $session['nama_grup'] ?? ($group['nama'] ?? null),
+            'members' => $members,
+            'rosterNounTitle' => BornpadelMahjongTournaments::registrationRosterNoun($tournament, true),
             'statusLabel' => BornpadelMahjongTournaments::registrationStatusLabel($session['registration_status'] ?? null),
             'genderLabel' => BornpadelMahjongTournaments::genderLabel($session['gender'] ?? null),
             'canUploadReceipt' => BornpadelMahjongTournaments::canUploadPaymentReceipt(
@@ -450,13 +561,24 @@ class PublicMahjongTournamentController extends Controller
             return redirect()->route('public.mahjong-tournaments.register', $id);
         }
 
-        $validated = $request->validate([
+        $idKategori = $this->resolveKategoriId($request, $tournament, $session);
+        $isGroupMode = ($session['registration_mode'] ?? 'single') === 'group'
+            && BornpadelMahjongTournaments::allowsGroupRegistration($tournament);
+        $groupSize = $isGroupMode
+            ? BornpadelMahjongTournaments::registrationRosterSize($tournament, $idKategori)
+            : 1;
+
+        $rules = [
             'nama' => ['required', 'string', 'max:255'],
             'no_hp' => ['required', 'string', 'max:25', 'regex:/^[0-9+\-\s()]+$/'],
             'gender' => ['required', 'in:male,female'],
             'tgl_lahir' => ['nullable', 'date', 'before:today'],
             'foto' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
-        ], [
+            'registration_mode' => ['nullable', 'in:single,group'],
+            'nama_grup' => [$isGroupMode ? 'required' : 'nullable', 'string', 'max:255'],
+        ];
+
+        $messages = [
             'nama.required' => 'Nama lengkap wajib diisi.',
             'no_hp.required' => 'Nomor HP wajib diisi.',
             'no_hp.regex' => 'Format nomor HP tidak valid.',
@@ -467,7 +589,23 @@ class PublicMahjongTournamentController extends Controller
             'foto.image' => 'Foto harus berupa gambar.',
             'foto.mimes' => 'Foto harus berformat JPG, PNG, atau WebP.',
             'foto.max' => 'Ukuran foto maksimal 5 MB.',
-        ]);
+            'nama_grup.required' => 'Nama '.BornpadelMahjongTournaments::registrationRosterNoun($tournament).' wajib diisi.',
+        ];
+
+        if ($isGroupMode) {
+            for ($n = 2; $n <= $groupSize; $n++) {
+                $rules['player_'.$n.'.nama'] = ['required', 'string', 'max:255'];
+                $rules['player_'.$n.'.no_hp'] = ['required', 'string', 'max:25'];
+                $rules['player_'.$n.'.gender'] = ['required', 'in:male,female'];
+                $rules['player_'.$n.'.tgl_lahir'] = ['nullable', 'date', 'before:today'];
+                $rules['foto_'.$n] = ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'];
+                $messages['player_'.$n.'.nama.required'] = 'Nama pemain '.$n.' wajib diisi.';
+                $messages['player_'.$n.'.gender.required'] = 'Jenis kelamin pemain '.$n.' wajib dipilih.';
+                $messages['player_'.$n.'.gender.in'] = 'Jenis kelamin pemain '.$n.' tidak valid.';
+            }
+        }
+
+        $validated = $request->validate($rules, $messages);
 
         $noHp = $this->normalizedPhone($request, $validated['no_hp']);
 
@@ -477,7 +615,9 @@ class PublicMahjongTournamentController extends Controller
                 ->withErrors(['form' => 'Nomor HP tidak sesuai. Silakan periksa ulang.']);
         }
 
-        $idKategori = $this->resolveKategoriId($request, $tournament, $session);
+        if ($isGroupMode) {
+            return $this->submitGroupRegister($request, $id, $tournament, $session, $validated, $idKategori, $groupSize, $noHp);
+        }
 
         $result = BornpadelMahjongTournaments::registerPlayer([
             'id_turnamen' => $id,
@@ -503,6 +643,8 @@ class PublicMahjongTournamentController extends Controller
         $registerData = is_array($result['data'] ?? null) ? $result['data'] : [];
 
         session()->put($this->registerSessionKey($id), [
+            'registration_mode' => 'single',
+            'nama_grup' => null,
             'no_hp' => $noHp,
             'id_kategori' => $registerData['kategori_id'] ?? $checkData['kategori_id'] ?? $idKategori,
             'registered' => true,
@@ -513,6 +655,14 @@ class PublicMahjongTournamentController extends Controller
             'registration_status' => $registration['status'] ?? $registerData['status'] ?? 'pending',
             'peserta_id' => $registration['peserta_id'] ?? $registerData['peserta_id'] ?? null,
             'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
+            'players' => [[
+                'no_hp' => $noHp,
+                'pemain_exists' => true,
+                'nama' => $pemain['nama'] ?? $validated['nama'],
+                'gender' => $pemain['gender'] ?? $validated['gender'],
+                'foto_url' => $pemain['foto_url'] ?? $registerData['foto_url'] ?? null,
+            ]],
+            'group' => $checkData['group'] ?? null,
             'just_registered' => true,
         ]);
 
@@ -614,14 +764,14 @@ class PublicMahjongTournamentController extends Controller
         return is_array($session) ? $session : null;
     }
 
-    private function normalizedPhone(Request $request, string $fallback = ''): string
+    private function normalizedPhone(Request $request, string $fallback = '', string $name = 'no_hp'): string
     {
         $phoneService = app(PhoneNumberService::class);
 
-        if ($request->filled('no_hp_local') || $request->filled('no_hp_country')) {
+        if ($request->filled($name.'_local') || $request->filled($name.'_country')) {
             return $phoneService->normalize(
-                $request->input('no_hp_country'),
-                $request->input('no_hp_local')
+                $request->input($name.'_country'),
+                $request->input($name.'_local')
             );
         }
 
@@ -639,6 +789,23 @@ class PublicMahjongTournamentController extends Controller
     {
         $pemain = is_array($data['pemain'] ?? null) ? $data['pemain'] : null;
         $registration = is_array($data['registration'] ?? null) ? $data['registration'] : null;
+        $group = is_array($data['group'] ?? null) ? $data['group'] : ($session['group'] ?? null);
+        $namaGrup = $group['nama'] ?? ($session['nama_grup'] ?? null);
+        $players = $session['players'] ?? null;
+
+        if (is_array($group['members'] ?? null)) {
+            $players = array_map(static function (array $member) {
+                return [
+                    'no_hp' => $member['no_hp'] ?? null,
+                    'pemain_exists' => true,
+                    'nama' => $member['nama'] ?? null,
+                    'gender' => $member['gender'] ?? null,
+                    'foto_url' => $member['foto_url'] ?? null,
+                    'peserta_id' => $member['peserta_id'] ?? null,
+                    'status' => $member['status'] ?? null,
+                ];
+            }, $group['members']);
+        }
 
         return array_merge($session, [
             'no_hp' => (string) ($data['no_hp'] ?? $session['no_hp'] ?? ''),
@@ -651,6 +818,169 @@ class PublicMahjongTournamentController extends Controller
             'registration_status' => $registration['status'] ?? $session['registration_status'] ?? null,
             'peserta_id' => $registration['peserta_id'] ?? $session['peserta_id'] ?? null,
             'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? $session['bukti_bayar_url'] ?? null,
+            'nama_grup' => $namaGrup,
+            'group' => $group,
+            'players' => $players,
+            'registration_mode' => $group ? 'group' : ($session['registration_mode'] ?? 'single'),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function sessionFromCheck(array $data, string $noHp, $idKategori, string $mode = 'single'): array
+    {
+        $pemain = is_array($data['pemain'] ?? null) ? $data['pemain'] : null;
+        $registration = is_array($data['registration'] ?? null) ? $data['registration'] : null;
+        $group = is_array($data['group'] ?? null) ? $data['group'] : null;
+
+        return [
+            'registration_mode' => $group ? 'group' : $mode,
+            'nama_grup' => $group['nama'] ?? null,
+            'no_hp' => (string) ($data['no_hp'] ?? $noHp),
+            'id_kategori' => $data['kategori_id'] ?? $idKategori,
+            'registered' => (bool) ($data['registered'] ?? false),
+            'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
+            'nama' => $pemain['nama'] ?? null,
+            'gender' => $pemain['gender'] ?? null,
+            'foto_url' => $pemain['foto_url'] ?? null,
+            'registration_status' => $registration['status'] ?? null,
+            'peserta_id' => $registration['peserta_id'] ?? null,
+            'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
+            'players' => is_array($group['members'] ?? null) ? $group['members'] : [[
+                'no_hp' => (string) ($data['no_hp'] ?? $noHp),
+                'pemain_exists' => (bool) ($data['pemain_exists'] ?? false),
+                'nama' => $pemain['nama'] ?? null,
+                'gender' => $pemain['gender'] ?? null,
+                'foto_url' => $pemain['foto_url'] ?? null,
+            ]],
+            'group' => $group,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $session
+     * @return array<int, array<string, mixed>>
+     */
+    private function sessionPlayers(array $session, int $expectedSize): array
+    {
+        $players = is_array($session['players'] ?? null) ? array_values($session['players']) : [];
+
+        if ($players === [] && ! empty($session['no_hp'])) {
+            $players[] = [
+                'no_hp' => $session['no_hp'] ?? '',
+                'pemain_exists' => ! empty($session['pemain_exists']),
+                'nama' => $session['nama'] ?? null,
+                'gender' => $session['gender'] ?? null,
+                'foto_url' => $session['foto_url'] ?? null,
+            ];
+        }
+
+        while (count($players) < $expectedSize) {
+            $players[] = [
+                'no_hp' => '',
+                'pemain_exists' => false,
+                'nama' => null,
+                'gender' => null,
+                'foto_url' => null,
+            ];
+        }
+
+        return array_slice($players, 0, max(1, $expectedSize));
+    }
+
+    /**
+     * @param  array<string, mixed>  $tournament
+     * @param  array<string, mixed>  $session
+     * @param  array<string, mixed>  $validated
+     */
+    private function submitGroupRegister(
+        Request $request,
+        int $id,
+        array $tournament,
+        array $session,
+        array $validated,
+        $idKategori,
+        int $groupSize,
+        string $noHp
+    ): RedirectResponse {
+        $sessionPlayers = $this->sessionPlayers($session, $groupSize);
+        $namaGrup = trim((string) ($validated['nama_grup'] ?? $session['nama_grup'] ?? ''));
+
+        $players = [[
+            'nama' => $validated['nama'],
+            'no_hp' => $noHp,
+            'gender' => $validated['gender'],
+            'tgl_lahir' => $validated['tgl_lahir'] ?? null,
+            'rating' => 0,
+        ]];
+        $fotos = [$request->file('foto')];
+
+        for ($n = 2; $n <= $groupSize; $n++) {
+            $player = is_array($request->input('player_'.$n)) ? $request->input('player_'.$n) : [];
+            $expectedPhone = (string) ($sessionPlayers[$n - 1]['no_hp'] ?? '');
+            $submittedPhone = trim((string) ($player['no_hp'] ?? ''));
+
+            if ($expectedPhone === '' || $submittedPhone !== $expectedPhone) {
+                return redirect()
+                    ->route('public.mahjong-tournaments.register', $id)
+                    ->withErrors(['form' => 'Nomor HP pemain '.$n.' tidak sesuai. Silakan periksa ulang.']);
+            }
+
+            $players[] = [
+                'nama' => trim((string) ($player['nama'] ?? '')),
+                'no_hp' => $submittedPhone,
+                'gender' => (string) ($player['gender'] ?? ''),
+                'tgl_lahir' => $player['tgl_lahir'] ?? null,
+                'rating' => 0,
+            ];
+            $fotos[] = $request->file('foto_'.$n);
+        }
+
+        $result = BornpadelMahjongTournaments::registerGroup([
+            'id_turnamen' => $id,
+            'id_kategori' => $idKategori,
+            'nama_grup' => $namaGrup,
+            'players' => $players,
+        ], $fotos);
+
+        if ($result['error'] !== null) {
+            return back()
+                ->withInput()
+                ->withErrors(['form' => $result['error']]);
+        }
+
+        $registerData = is_array($result['data'] ?? null) ? $result['data'] : [];
+        $check = BornpadelMahjongTournaments::checkRegistration($id, $noHp, $idKategori);
+        $checkData = is_array($check['data'] ?? null) ? $check['data'] : [];
+        $group = is_array($registerData['group'] ?? null)
+            ? $registerData['group']
+            : (is_array($checkData['group'] ?? null) ? $checkData['group'] : null);
+        $registration = is_array($checkData['registration'] ?? null) ? $checkData['registration'] : null;
+        $pemain = is_array($checkData['pemain'] ?? null) ? $checkData['pemain'] : null;
+        $resultPlayers = is_array($registerData['players'] ?? null) ? $registerData['players'] : $players;
+
+        session()->put($this->registerSessionKey($id), [
+            'registration_mode' => 'group',
+            'nama_grup' => $registerData['nama_grup'] ?? $namaGrup,
+            'no_hp' => $noHp,
+            'id_kategori' => $registerData['kategori_id'] ?? $checkData['kategori_id'] ?? $idKategori,
+            'registered' => true,
+            'pemain_exists' => true,
+            'nama' => $pemain['nama'] ?? $validated['nama'],
+            'gender' => $pemain['gender'] ?? $validated['gender'],
+            'foto_url' => $pemain['foto_url'] ?? ($registerData['foto_url'] ?? null),
+            'registration_status' => $registration['status'] ?? $registerData['status'] ?? 'unpaid',
+            'peserta_id' => $registration['peserta_id'] ?? $registerData['peserta_id'] ?? null,
+            'bukti_bayar_url' => $registration['bukti_bayar_url'] ?? null,
+            'players' => $resultPlayers,
+            'group' => $group,
+            'just_registered' => true,
+        ]);
+
+        return redirect()
+            ->route('public.mahjong-tournaments.register.status', $id)
+            ->with('success', $result['message'] ?? 'Pendaftaran tim berhasil dikirim.');
     }
 }

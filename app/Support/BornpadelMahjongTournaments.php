@@ -11,6 +11,12 @@ use Throwable;
 
 class BornpadelMahjongTournaments
 {
+    public const MAHJONG_TEAM_PLAYERS_PER_TEAM = 4;
+
+    public const MAHJONG_TEAM_MIN_PLAYERS_PER_TEAM = 4;
+
+    public const MAHJONG_TEAM_MAX_PLAYERS_PER_TEAM = 8;
+
     /**
      * @return array{items: array<int, array<string, mixed>>, error: string|null}
      */
@@ -151,7 +157,7 @@ class BornpadelMahjongTournaments
 
             $turnamen = $connection->table('m_turnamen')
                 ->where('id', $id)
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->first();
 
             if (! $turnamen) {
@@ -302,7 +308,7 @@ class BornpadelMahjongTournaments
 
             $turnamen = $connection->table('m_turnamen')
                 ->where('id', $id)
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->first();
 
             if (! $turnamen) {
@@ -946,6 +952,70 @@ class BornpadelMahjongTournaments
         return $jenis === 'mahjong_team' ? 'Mahjong Tim' : 'Mahjong';
     }
 
+    public static function allowsGroupRegistration(array $tournament): bool
+    {
+        return ! empty($tournament['allows_group_registration'])
+            || ($tournament['jenis'] ?? null) === 'mahjong_team';
+    }
+
+    public static function registrationRosterNoun(array $tournament, bool $titleCase = false): string
+    {
+        $noun = self::allowsGroupRegistration($tournament)
+            ? ($tournament['registration_roster_noun'] ?? 'tim')
+            : 'grup';
+
+        return $titleCase ? ucfirst($noun) : $noun;
+    }
+
+    public static function registrationRosterSize(array $tournament, $idKategori = null): int
+    {
+        if (! self::allowsGroupRegistration($tournament)) {
+            return 1;
+        }
+
+        if ($idKategori !== null && $idKategori !== '') {
+            foreach ($tournament['kategori'] ?? [] as $kat) {
+                if ((int) ($kat['id'] ?? 0) === (int) $idKategori) {
+                    return self::clampMahjongPlayersPerTeam(
+                        (int) ($kat['registration_roster_size'] ?? $kat['players_per_group'] ?? $tournament['registration_roster_size'] ?? self::MAHJONG_TEAM_PLAYERS_PER_TEAM)
+                    );
+                }
+            }
+        }
+
+        return self::clampMahjongPlayersPerTeam(
+            (int) ($tournament['registration_roster_size'] ?? self::MAHJONG_TEAM_PLAYERS_PER_TEAM)
+        );
+    }
+
+    private static function clampMahjongPlayersPerTeam(int $value): int
+    {
+        if ($value <= 0) {
+            $value = self::MAHJONG_TEAM_PLAYERS_PER_TEAM;
+        }
+
+        return max(
+            self::MAHJONG_TEAM_MIN_PLAYERS_PER_TEAM,
+            min(self::MAHJONG_TEAM_MAX_PLAYERS_PER_TEAM, $value)
+        );
+    }
+
+    /**
+     * @param  object|array<string, mixed>  $row
+     */
+    private static function readPlayersPerGroup($row): int
+    {
+        if (is_array($row)) {
+            $value = (int) ($row['players_per_group'] ?? 0);
+        } else {
+            $value = property_exists($row, 'players_per_group')
+                ? (int) ($row->players_per_group ?? 0)
+                : 0;
+        }
+
+        return $value > 0 ? $value : self::MAHJONG_TEAM_PLAYERS_PER_TEAM;
+    }
+
     /**
      * @param  object  $row
      * @return array<string, mixed>
@@ -953,8 +1023,24 @@ class BornpadelMahjongTournaments
     private static function mapTournamentRow($row): array
     {
         $foto = property_exists($row, 'foto') ? ($row->foto ?? null) : null;
+        $jenis = $row->jenis ?? 'mahjong';
+        $allowsGroup = $jenis === 'mahjong_team';
+        $fallbackPpg = self::readPlayersPerGroup($row);
         $kategoriList = self::listKategoriForTournament((int) $row->id);
+
+        if ($allowsGroup) {
+            foreach ($kategoriList as &$kat) {
+                $kat['registration_roster_size'] = self::clampMahjongPlayersPerTeam(
+                    (int) ($kat['players_per_group'] ?: $fallbackPpg)
+                );
+            }
+            unset($kat);
+        }
+
         $defaultKategori = self::pickDefaultKategori($kategoriList);
+        $rosterSize = $allowsGroup
+            ? (int) ($defaultKategori['registration_roster_size'] ?? self::clampMahjongPlayersPerTeam($fallbackPpg))
+            : 1;
 
         return [
             'id' => (int) $row->id,
@@ -962,8 +1048,8 @@ class BornpadelMahjongTournaments
             'tanggal' => $row->tanggal ?? null,
             'harga' => $defaultKategori['harga'] ?? ($row->harga ?? 0),
             'syarat' => $row->syarat ?? null,
-            'jenis' => $row->jenis ?? 'mahjong',
-            'jenis_label' => self::jenisLabel($row->jenis ?? 'mahjong'),
+            'jenis' => $jenis,
+            'jenis_label' => self::jenisLabel($jenis),
             'status' => $row->status ?? null,
             'mahjong_is_final' => (bool) (
                 $defaultKategori['mahjong_is_final']
@@ -971,6 +1057,10 @@ class BornpadelMahjongTournaments
             ),
             // Same as Bornpadel guest landing: turnamen status drives the Daftar button.
             'registration_open' => ($row->status ?? null) === 'open',
+            'allows_group_registration' => $allowsGroup,
+            'registration_roster_size' => $rosterSize,
+            'registration_roster_noun' => $allowsGroup ? 'tim' : 'grup',
+            'players_per_group' => $allowsGroup ? $rosterSize : null,
             'foto' => $foto,
             'share_image_url' => self::tournamentShareImageUrl($foto),
             'kategori' => $kategoriList,
@@ -996,6 +1086,10 @@ class BornpadelMahjongTournaments
                 ->orderBy('id')
                 ->get()
                 ->map(function ($row) {
+                    $playersPerGroup = property_exists($row, 'players_per_group') && $row->players_per_group !== null
+                        ? (int) $row->players_per_group
+                        : null;
+
                     return [
                         'id' => (int) $row->id,
                         'nama' => $row->nama,
@@ -1005,6 +1099,7 @@ class BornpadelMahjongTournaments
                         'status' => $row->status ?? null,
                         'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
                         'registration_open' => ($row->status ?? null) === 'open',
+                        'players_per_group' => $playersPerGroup,
                     ];
                 })
                 ->values()
@@ -1200,6 +1295,83 @@ class BornpadelMahjongTournaments
     }
 
     /**
+     * Register a full mahjong team (N pemain + nama tim) via the Bornpadel database.
+     * There is no external API fallback for this path.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<int, UploadedFile|null>  $fotos
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
+     */
+    public static function registerGroup(array $payload, array $fotos = []): array
+    {
+        return self::publicRegisterResult(self::registerGroupFromDatabase($payload, $fotos));
+    }
+
+    /**
+     * @return array{ok: bool, error: string|null}
+     */
+    public static function assertGroupNameAvailable(int $turnamenId, string $nama, $idKategori = null): array
+    {
+        $nama = trim($nama);
+
+        if ($nama === '') {
+            return ['ok' => false, 'error' => 'Nama tim wajib diisi.'];
+        }
+
+        if (mb_strlen($nama) > 255) {
+            return ['ok' => false, 'error' => 'Nama tim maksimal 255 karakter.'];
+        }
+
+        try {
+            $connection = DB::connection('bornpadel');
+            $resolved = self::resolveKategoriForTournament($connection, $turnamenId, $idKategori, false);
+
+            if (! $resolved['ok']) {
+                return ['ok' => false, 'error' => $resolved['error'] ?? 'Kategori tidak valid.'];
+            }
+
+            $kategoriId = $resolved['kategori'] ? (int) $resolved['kategori']->id : null;
+            $lower = mb_strtolower($nama);
+
+            if (Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran')) {
+                $query = $connection->table('turnamen_grup_pendaftaran')
+                    ->whereRaw('LOWER(nama) = ?', [$lower]);
+
+                if ($kategoriId !== null
+                    && Schema::connection('bornpadel')->hasColumn('turnamen_grup_pendaftaran', 'id_kategori')) {
+                    $query->where('id_kategori', $kategoriId);
+                } else {
+                    $query->where('id_turnamen', $turnamenId);
+                }
+
+                if ($query->exists()) {
+                    return ['ok' => false, 'error' => 'Nama tim sudah digunakan pada kategori ini.'];
+                }
+            }
+
+            if (Schema::connection('bornpadel')->hasTable('grup')) {
+                $query = $connection->table('grup')
+                    ->whereRaw('LOWER(nama) = ?', [$lower]);
+
+                if ($kategoriId !== null
+                    && Schema::connection('bornpadel')->hasColumn('grup', 'id_kategori')) {
+                    $query->where('id_kategori', $kategoriId);
+                } else {
+                    $query->where('id_turnamen', $turnamenId);
+                }
+
+                if ($query->exists()) {
+                    return ['ok' => false, 'error' => 'Nama tim sudah digunakan pada kategori ini.'];
+                }
+            }
+
+            return ['ok' => true, 'error' => null];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error' => 'Database Bornpadel: '.$e->getMessage()];
+        }
+    }
+
+    /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
     public static function checkRegistration(int $turnamenId, string $noHp, $idKategori = null): array
@@ -1264,6 +1436,7 @@ class BornpadelMahjongTournaments
                         'pemain_exists' => false,
                         'pemain' => null,
                         'registration' => null,
+                        'group' => null,
                     ],
                     'error' => null,
                 ];
@@ -1293,12 +1466,89 @@ class BornpadelMahjongTournaments
                         'bukti_bayar_url' => self::paymentReceiptUrl($peserta->bukti_bayar ?? null),
                         'paired_at' => $peserta->paired_at ?? null,
                     ] : null,
+                    'group' => $peserta ? self::grupPendaftaranForPeserta($connection, (int) $peserta->id) : null,
                 ],
                 'error' => null,
             ];
         } catch (Throwable $e) {
             return $fail('Database Bornpadel: '.$e->getMessage(), true);
         }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function grupPendaftaranForPeserta($connection, int $pesertaId): ?array
+    {
+        if ($pesertaId <= 0
+            || ! Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran')
+            || ! Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran_member')) {
+            return null;
+        }
+
+        try {
+            $member = $connection->table('turnamen_grup_pendaftaran_member')
+                ->where('id_peserta', $pesertaId)
+                ->first();
+
+            if (! $member) {
+                return null;
+            }
+
+            return self::grupPendaftaranPayload($connection, (int) $member->id_grup_pendaftaran);
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private static function grupPendaftaranPayload($connection, int $groupId): ?array
+    {
+        $group = $connection->table('turnamen_grup_pendaftaran')->where('id', $groupId)->first();
+
+        if (! $group) {
+            return null;
+        }
+
+        $members = $connection->table('turnamen_grup_pendaftaran_member')
+            ->join('turnamen_peserta', 'turnamen_peserta.id', '=', 'turnamen_grup_pendaftaran_member.id_peserta')
+            ->leftJoin('m_pemain', 'm_pemain.id', '=', 'turnamen_peserta.id_pemain1')
+            ->where('turnamen_grup_pendaftaran_member.id_grup_pendaftaran', $groupId)
+            ->orderBy('turnamen_grup_pendaftaran_member.urutan')
+            ->get([
+                'turnamen_grup_pendaftaran_member.urutan',
+                'turnamen_peserta.id as peserta_id',
+                'turnamen_peserta.status',
+                'turnamen_peserta.bukti_bayar',
+                'm_pemain.id as pemain_id',
+                'm_pemain.nama',
+                'm_pemain.gender',
+                'm_pemain.no_hp',
+                'm_pemain.foto',
+            ])
+            ->map(function ($row) {
+                return [
+                    'urutan' => (int) $row->urutan,
+                    'peserta_id' => (int) $row->peserta_id,
+                    'status' => $row->status,
+                    'bukti_bayar_url' => self::paymentReceiptUrl($row->bukti_bayar ?? null),
+                    'pemain_id' => $row->pemain_id ? (int) $row->pemain_id : null,
+                    'nama' => $row->nama ?: '—',
+                    'gender' => $row->gender,
+                    'no_hp' => $row->no_hp,
+                    'foto_url' => self::pemainPhotoUrl($row->foto ?? null),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'id' => (int) $group->id,
+            'nama' => $group->nama,
+            'members' => $members,
+        ];
     }
 
     /**
@@ -1867,6 +2117,319 @@ class BornpadelMahjongTournaments
 
     /**
      * @param  array<string, mixed>  $payload
+     * @param  array<int, UploadedFile|null>  $fotos
+     * @return array{data: array<string, mixed>|null, message: string|null, error: string|null, retry_via_api?: bool}
+     */
+    private static function registerGroupFromDatabase(array $payload, array $fotos = []): array
+    {
+        $fail = static function (string $message, bool $retryViaApi = false): array {
+            return [
+                'data' => null,
+                'message' => null,
+                'error' => $message,
+                'retry_via_api' => $retryViaApi,
+            ];
+        };
+
+        try {
+            $connection = DB::connection('bornpadel');
+
+            if (! Schema::connection('bornpadel')->hasTable('m_turnamen')
+                || ! Schema::connection('bornpadel')->hasTable('m_pemain')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_peserta')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran')
+                || ! Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran_member')) {
+                return $fail('Database Bornpadel belum memiliki tabel pendaftaran tim.');
+            }
+
+            $turnamenId = (int) ($payload['id_turnamen'] ?? 0);
+            $turnamen = $connection->table('m_turnamen')->where('id', $turnamenId)->first();
+
+            if (! $turnamen) {
+                return $fail('Turnamen tidak ditemukan.');
+            }
+
+            if (($turnamen->jenis ?? '') !== 'mahjong_team') {
+                return $fail('Pendaftaran satu tim hanya tersedia untuk Mahjong Tim.');
+            }
+
+            if (($turnamen->status ?? '') !== 'open') {
+                return $fail('Pendaftaran turnamen tidak dibuka.');
+            }
+
+            $resolved = self::resolveKategoriForTournament(
+                $connection,
+                $turnamenId,
+                $payload['id_kategori'] ?? null,
+                true
+            );
+            if (! $resolved['ok']) {
+                return $fail($resolved['error'] ?? 'Kategori tidak valid.');
+            }
+
+            $kategori = $resolved['kategori'];
+            $kategoriId = $kategori ? (int) $kategori->id : null;
+            $fromKat = ($kategori && isset($kategori->players_per_group))
+                ? (int) $kategori->players_per_group
+                : 0;
+            $fromTurnamen = isset($turnamen->players_per_group)
+                ? (int) $turnamen->players_per_group
+                : 0;
+            $expectedSize = self::clampMahjongPlayersPerTeam($fromKat ?: $fromTurnamen);
+
+            $players = is_array($payload['players'] ?? null) ? $payload['players'] : [];
+            if (count($players) !== $expectedSize) {
+                return $fail('Pendaftaran tim harus berisi tepat '.$expectedSize.' pemain.');
+            }
+
+            $namaGrup = trim((string) ($payload['nama_grup'] ?? ''));
+            $nameCheck = self::assertGroupNameAvailable($turnamenId, $namaGrup, $kategoriId);
+            if (! $nameCheck['ok']) {
+                return $fail($nameCheck['error'] ?? 'Nama tim tidak valid.');
+            }
+
+            $normalizedPlayers = [];
+            $phones = [];
+
+            foreach ($players as $index => $player) {
+                $player = is_array($player) ? $player : [];
+                $parsed = self::parsePlayerPayload($player, $index + 1);
+
+                if ($parsed['error'] !== null) {
+                    return $fail($parsed['error']);
+                }
+
+                $noHp = $parsed['no_hp'];
+                if (in_array($noHp, $phones, true)) {
+                    return $fail('Nomor HP setiap pemain dalam tim harus berbeda satu sama lain.');
+                }
+                $phones[] = $noHp;
+
+                $existingPemain = $connection->table('m_pemain')->where('no_hp', $noHp)->first();
+                if ($existingPemain !== null) {
+                    $alreadyRegistered = self::pesertaQueryForPemain(
+                        $connection,
+                        $turnamenId,
+                        (int) $existingPemain->id,
+                        $kategoriId
+                    )->exists();
+
+                    if ($alreadyRegistered) {
+                        return $fail('Nomor HP pemain '.($index + 1).' sudah terdaftar pada kategori ini.');
+                    }
+                }
+
+                $foto = $fotos[$index] ?? null;
+                $fotoPath = null;
+                if ($foto instanceof UploadedFile) {
+                    try {
+                        $fotoPath = self::storePemainPhotoFile($foto);
+                    } catch (Throwable $e) {
+                        return $fail($e->getMessage());
+                    }
+                }
+
+                $normalizedPlayers[] = array_merge($parsed, [
+                    'existing' => $existingPemain,
+                    'foto_path' => $fotoPath,
+                ]);
+            }
+
+            $now = now();
+            $hasKategoriCol = Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'id_kategori');
+            $hasSumberCol = Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'sumber');
+            $hasGroupKategoriCol = Schema::connection('bornpadel')->hasColumn('turnamen_grup_pendaftaran', 'id_kategori');
+
+            $result = $connection->transaction(function () use (
+                $connection,
+                $normalizedPlayers,
+                $namaGrup,
+                $turnamenId,
+                $kategoriId,
+                $hasKategoriCol,
+                $hasSumberCol,
+                $hasGroupKategoriCol,
+                $now
+            ) {
+                $created = [];
+
+                foreach ($normalizedPlayers as $player) {
+                    $pemainData = [
+                        'nama' => $player['nama'],
+                        'gender' => $player['gender'],
+                        'no_hp' => $player['no_hp'],
+                        'rating' => $player['rating'],
+                        'tgl_lahir' => $player['tgl_lahir'],
+                        'usia' => $player['usia'],
+                        'updated_at' => $now,
+                    ];
+
+                    if ($player['foto_path'] !== null) {
+                        $pemainData['foto'] = $player['foto_path'];
+                    }
+
+                    if ($player['existing'] !== null) {
+                        $connection->table('m_pemain')
+                            ->where('id', $player['existing']->id)
+                            ->update($pemainData);
+                        $pemainId = (int) $player['existing']->id;
+                    } else {
+                        $pemainId = (int) $connection->table('m_pemain')->insertGetId(array_merge($pemainData, [
+                            'created_at' => $now,
+                        ]));
+                    }
+
+                    $pesertaData = [
+                        'id_turnamen' => $turnamenId,
+                        'id_pemain1' => $pemainId,
+                        'status' => 'unpaid',
+                        'bukti_bayar' => null,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+
+                    if ($hasKategoriCol && $kategoriId !== null) {
+                        $pesertaData['id_kategori'] = $kategoriId;
+                    }
+
+                    if ($hasSumberCol) {
+                        $pesertaData['sumber'] = 'external';
+                    }
+
+                    $pesertaId = (int) $connection->table('turnamen_peserta')->insertGetId($pesertaData);
+
+                    $created[] = [
+                        'pemain_id' => $pemainId,
+                        'peserta_id' => $pesertaId,
+                        'nama' => $player['nama'],
+                        'no_hp' => $player['no_hp'],
+                        'gender' => $player['gender'],
+                        'foto_url' => self::pemainPhotoUrl($player['foto_path']),
+                    ];
+                }
+
+                $groupData = [
+                    'id_turnamen' => $turnamenId,
+                    'nama' => $namaGrup,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+
+                if ($hasGroupKategoriCol && $kategoriId !== null) {
+                    $groupData['id_kategori'] = $kategoriId;
+                }
+
+                $groupId = (int) $connection->table('turnamen_grup_pendaftaran')->insertGetId($groupData);
+
+                foreach ($created as $index => $row) {
+                    $connection->table('turnamen_grup_pendaftaran_member')->insert([
+                        'id_grup_pendaftaran' => $groupId,
+                        'id_peserta' => $row['peserta_id'],
+                        'urutan' => $index + 1,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+
+                return [
+                    'group_id' => $groupId,
+                    'players' => $created,
+                ];
+            });
+
+            $first = $result['players'][0] ?? [];
+
+            return [
+                'data' => [
+                    'turnamen_id' => $turnamenId,
+                    'kategori_id' => $kategoriId,
+                    'grup_pendaftaran_id' => $result['group_id'],
+                    'nama_grup' => $namaGrup,
+                    'pemain_id' => $first['pemain_id'] ?? null,
+                    'peserta_id' => $first['peserta_id'] ?? null,
+                    'foto_url' => $first['foto_url'] ?? null,
+                    'status' => 'unpaid',
+                    'players' => $result['players'],
+                    'group' => self::grupPendaftaranPayload($connection, $result['group_id']),
+                ],
+                'message' => 'Tim berhasil didaftarkan.',
+                'error' => null,
+            ];
+        } catch (Throwable $e) {
+            return $fail('Database Bornpadel: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $player
+     * @return array{error: string|null, nama: string, no_hp: string, gender: string, rating: float, tgl_lahir: string|null, usia: int|null}
+     */
+    private static function parsePlayerPayload(array $player, int $index): array
+    {
+        $label = 'pemain '.$index;
+        $nama = trim((string) ($player['nama'] ?? ''));
+        if ($nama === '') {
+            return ['error' => 'Nama '.$label.' wajib diisi.'] + self::emptyParsedPlayer();
+        }
+
+        $noHp = trim((string) ($player['no_hp'] ?? ''));
+        if ($noHp === '') {
+            return ['error' => 'Nomor HP '.$label.' wajib diisi.'] + self::emptyParsedPlayer();
+        }
+
+        if (strlen($noHp) > 20) {
+            return ['error' => 'Nomor HP '.$label.' terlalu panjang (maks. 20 karakter).'] + self::emptyParsedPlayer();
+        }
+
+        $gender = (string) ($player['gender'] ?? '');
+        if (! in_array($gender, ['male', 'female'], true)) {
+            return ['error' => 'Jenis kelamin '.$label.' tidak valid.'] + self::emptyParsedPlayer();
+        }
+
+        $tglLahir = isset($player['tgl_lahir']) && $player['tgl_lahir'] !== ''
+            ? (string) $player['tgl_lahir']
+            : null;
+        $usia = null;
+
+        if ($tglLahir !== null) {
+            try {
+                $birthDate = Carbon::parse($tglLahir);
+                $tglLahir = $birthDate->toDateString();
+                $usia = $birthDate->age;
+            } catch (Throwable $e) {
+                return ['error' => 'Tanggal lahir '.$label.' tidak valid.'] + self::emptyParsedPlayer();
+            }
+        }
+
+        return [
+            'error' => null,
+            'nama' => $nama,
+            'no_hp' => $noHp,
+            'gender' => $gender,
+            'rating' => (float) ($player['rating'] ?? 0),
+            'tgl_lahir' => $tglLahir,
+            'usia' => $usia,
+        ];
+    }
+
+    /**
+     * @return array{error: string|null, nama: string, no_hp: string, gender: string, rating: float, tgl_lahir: string|null, usia: int|null}
+     */
+    private static function emptyParsedPlayer(): array
+    {
+        return [
+            'error' => null,
+            'nama' => '',
+            'no_hp' => '',
+            'gender' => '',
+            'rating' => 0.0,
+            'tgl_lahir' => null,
+            'usia' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
      * @return array{data: array<string, mixed>|null, message: string|null, error: string|null}
      */
     private static function registerPlayerFromApi(array $payload, ?UploadedFile $foto = null): array
@@ -2079,7 +2642,7 @@ class BornpadelMahjongTournaments
 
             $turnamen = $connection->table('m_turnamen')
                 ->where('id', $id)
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->first();
 
             if (! $turnamen) {
@@ -2358,7 +2921,7 @@ class BornpadelMahjongTournaments
 
             $turnamen = $connection->table('m_turnamen')
                 ->where('id', $id)
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->first();
 
             if (! $turnamen) {
