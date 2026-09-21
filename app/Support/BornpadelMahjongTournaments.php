@@ -41,7 +41,7 @@ class BornpadelMahjongTournaments
             }
 
             $query = $connection->table('m_turnamen')
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->orderByDesc('tanggal')
                 ->orderByDesc('id');
 
@@ -915,7 +915,7 @@ class BornpadelMahjongTournaments
 
             $row = $connection->table('m_turnamen')
                 ->where('id', $id)
-                ->where('jenis', 'mahjong')
+                ->whereIn('jenis', self::mahjongJenisValues())
                 ->first();
 
             if (! $row) {
@@ -926,6 +926,24 @@ class BornpadelMahjongTournaments
         } catch (Throwable $e) {
             return null;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function mahjongJenisValues(): array
+    {
+        return ['mahjong', 'mahjong_team'];
+    }
+
+    private static function isMahjongFormat(?string $jenis): bool
+    {
+        return in_array($jenis, self::mahjongJenisValues(), true);
+    }
+
+    private static function jenisLabel(?string $jenis): string
+    {
+        return $jenis === 'mahjong_team' ? 'Mahjong Tim' : 'Mahjong';
     }
 
     /**
@@ -945,7 +963,7 @@ class BornpadelMahjongTournaments
             'harga' => $defaultKategori['harga'] ?? ($row->harga ?? 0),
             'syarat' => $row->syarat ?? null,
             'jenis' => $row->jenis ?? 'mahjong',
-            'jenis_label' => 'Mahjong',
+            'jenis_label' => self::jenisLabel($row->jenis ?? 'mahjong'),
             'status' => $row->status ?? null,
             'mahjong_is_final' => (bool) (
                 $defaultKategori['mahjong_is_final']
@@ -1680,7 +1698,7 @@ class BornpadelMahjongTournaments
                 return $fail('Turnamen tidak ditemukan.', true);
             }
 
-            if (($turnamen->jenis ?? '') !== 'mahjong') {
+            if (! self::isMahjongFormat($turnamen->jenis ?? '')) {
                 return $fail('Turnamen bukan turnamen mahjong.');
             }
 
