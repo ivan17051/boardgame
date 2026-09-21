@@ -165,7 +165,7 @@
 
         <div class="mb-4">
           <label for="foto" class="form-label fw-semibold">
-            Foto <span class="text-muted fw-normal">(opsional)</span>
+            Profile Picture <span class="text-muted fw-normal">(opsional)</span>
           </label>
           <input
             type="file"
