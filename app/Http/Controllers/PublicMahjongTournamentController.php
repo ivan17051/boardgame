@@ -29,7 +29,8 @@ class PublicMahjongTournamentController extends Controller
     public function standings(Request $request, int $id): View
     {
         $tournament = $this->tournamentOrAbort($id);
-        $result = BornpadelMahjongTournaments::fetchGroupStandings($id);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
+        $result = BornpadelMahjongTournaments::fetchGroupStandings($id, $idKategori);
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
         if ($data === []) {
@@ -44,7 +45,7 @@ class PublicMahjongTournamentController extends Controller
 
         return view('public.mahjong-standings', [
             'tournament' => $tournament,
-            'idKategori' => $this->resolveKategoriId($request, $tournament),
+            'idKategori' => $idKategori,
             'standings' => $data,
             'standingsError' => $result['error'],
         ]);
@@ -53,15 +54,16 @@ class PublicMahjongTournamentController extends Controller
     public function groupsPage(Request $request, int $id): View
     {
         $tournament = $this->tournamentOrAbort($id);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
         $result = BornpadelMahjongTournaments::fetchMahjongGroups($id);
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
         return view('public.mahjong-groups', [
             'tournament' => $tournament,
-            'idKategori' => $this->resolveKategoriId($request, $tournament),
+            'idKategori' => $idKategori,
             'groups' => is_array($data['groups'] ?? null) ? $data['groups'] : [],
             'groupsError' => $result['error'],
-            'canInputScores' => ($tournament['status'] ?? null) === 'ongoing',
+            'canInputScores' => BornpadelMahjongTournaments::canInputPublicScores($tournament, $idKategori, $data),
             'scoreStoreUrl' => route('public.mahjong-tournaments.scores.store', $id),
         ]);
     }
@@ -82,7 +84,7 @@ class PublicMahjongTournamentController extends Controller
 
     public function storeGroupPageScores(Request $request, int $id, int $grupId): RedirectResponse
     {
-        $this->ongoingTournamentOrAbort($id);
+        $this->scoreInputTournamentOrAbort($request, $id);
 
         if (! BornpadelMahjongTournaments::findMahjongGroup($id, $grupId)) {
             abort(404, 'Grup tidak ditemukan pada turnamen ini.');
@@ -196,7 +198,7 @@ class PublicMahjongTournamentController extends Controller
 
     public function storeGroupScores(Request $request, int $id): JsonResponse
     {
-        $this->ongoingTournamentOrAbort($id);
+        $this->scoreInputTournamentOrAbort($request, $id, true);
 
         $validated = $request->validate([
             'id_grup' => ['required', 'integer'],
@@ -728,6 +730,33 @@ class PublicMahjongTournamentController extends Controller
         }
 
         return $tournament;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function scoreInputTournamentOrAbort(Request $request, int $id, bool $asJson = false): array
+    {
+        $tournament = $this->ongoingTournamentOrAbort($id);
+        $idKategori = $this->resolveKategoriId($request, $tournament);
+
+        if (BornpadelMahjongTournaments::isExternalScoringEnabled($tournament, $idKategori)) {
+            return $tournament;
+        }
+
+        $message = 'Input skor eksternal sedang dinonaktifkan untuk turnamen ini.';
+
+        if ($asJson) {
+            abort(response()->json([
+                'success' => false,
+                'message' => $message,
+                'data' => [
+                    'mahjong_external_scoring_enabled' => false,
+                ],
+            ], 403));
+        }
+
+        abort(403, $message);
     }
 
     /**

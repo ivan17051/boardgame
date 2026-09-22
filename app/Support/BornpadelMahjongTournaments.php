@@ -279,9 +279,9 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    public static function fetchGroupStandings(int $id): array
+    public static function fetchGroupStandings(int $id, $idKategori = null): array
     {
-        $fromDatabase = self::fetchGroupStandingsFromDatabase($id);
+        $fromDatabase = self::fetchGroupStandingsFromDatabase($id, $idKategori);
         if ($fromDatabase['error'] === null) {
             return $fromDatabase;
         }
@@ -292,7 +292,7 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    private static function fetchGroupStandingsFromDatabase(int $id): array
+    private static function fetchGroupStandingsFromDatabase(int $id, $idKategori = null): array
     {
         try {
             $connection = DB::connection('bornpadel');
@@ -318,18 +318,17 @@ class BornpadelMahjongTournaments
                 ];
             }
 
-            $babakNumbers = $connection->table('grup')
-                ->where('id_turnamen', $id)
+            $babakNumbers = self::mahjongGrupQuery($connection, $id, $idKategori)
                 ->distinct()
-                ->orderBy('babak')
+                ->orderByDesc('babak')
                 ->pluck('babak');
 
             $sections = [];
 
             foreach ($babakNumbers as $babak) {
                 $babak = (int) $babak;
-                $groups = self::resolveMahjongGrupBatchForBabak($connection, $id, $babak);
-                $table = self::buildMahjongBabakTableFromDb($connection, $id, $babak);
+                $groups = self::resolveMahjongGrupBatchForBabak($connection, $id, $babak, $idKategori);
+                $table = self::buildMahjongBabakTableFromDb($connection, $id, $babak, $idKategori);
 
                 $sections[] = [
                     'babak' => $babak,
@@ -343,12 +342,18 @@ class BornpadelMahjongTournaments
                 ];
             }
 
+            $sections = self::annotateMahjongStandingsSections($turnamen, $sections);
+
             $recapSections = array_map(static function (array $section) {
                 return [
                     'babak' => $section['babak'],
                     'is_active' => $section['is_active'],
+                    'is_final' => $section['is_final'] ?? false,
+                    'advance_kind' => $section['advance_kind'] ?? 'none',
+                    'advance_note' => $section['advance_note'] ?? null,
+                    'ranking_note' => $section['ranking_note'] ?? null,
                     'rounds' => $section['rounds'],
-                    'standings' => $section['recap'],
+                    'standings' => $section['recap'] ?? $section['rows'] ?? [],
                 ];
             }, $sections);
 
@@ -367,6 +372,7 @@ class BornpadelMahjongTournaments
                     'babak_numbers' => $babakNumbers->map(static function ($babak) {
                         return (int) $babak;
                     })->values()->all(),
+                    'ranking_note' => 'Peringkat berdasarkan Total babak, lalu Menang, lalu Akumulasi.',
                 ],
                 'error' => null,
             ];
@@ -378,13 +384,24 @@ class BornpadelMahjongTournaments
         }
     }
 
+    private static function mahjongGrupQuery($connection, int $turnamenId, $idKategori = null)
+    {
+        $query = $connection->table('grup')->where('id_turnamen', $turnamenId);
+
+        if ($idKategori !== null && $idKategori !== ''
+            && Schema::connection('bornpadel')->hasColumn('grup', 'id_kategori')) {
+            $query->where('id_kategori', (int) $idKategori);
+        }
+
+        return $query;
+    }
+
     /**
      * @return \Illuminate\Support\Collection<int, object>
      */
-    private static function resolveMahjongGrupBatchForBabak($connection, int $turnamenId, int $babak)
+    private static function resolveMahjongGrupBatchForBabak($connection, int $turnamenId, int $babak, $idKategori = null)
     {
-        $active = $connection->table('grup')
-            ->where('id_turnamen', $turnamenId)
+        $active = self::mahjongGrupQuery($connection, $turnamenId, $idKategori)
             ->where('babak', $babak)
             ->where('is_aktif', true)
             ->orderBy('nama')
@@ -394,8 +411,7 @@ class BornpadelMahjongTournaments
             return $active;
         }
 
-        $latestCreatedAt = $connection->table('grup')
-            ->where('id_turnamen', $turnamenId)
+        $latestCreatedAt = self::mahjongGrupQuery($connection, $turnamenId, $idKategori)
             ->where('babak', $babak)
             ->where('is_aktif', false)
             ->max('created_at');
@@ -404,8 +420,7 @@ class BornpadelMahjongTournaments
             return collect();
         }
 
-        return $connection->table('grup')
-            ->where('id_turnamen', $turnamenId)
+        return self::mahjongGrupQuery($connection, $turnamenId, $idKategori)
             ->where('babak', $babak)
             ->where('is_aktif', false)
             ->where('created_at', $latestCreatedAt)
@@ -416,9 +431,9 @@ class BornpadelMahjongTournaments
     /**
      * @return array{rounds: array<int, array<string, mixed>>, rows: array<int, array<string, mixed>>}
      */
-    private static function buildMahjongBabakTableFromDb($connection, int $turnamenId, int $babak): array
+    private static function buildMahjongBabakTableFromDb($connection, int $turnamenId, int $babak, $idKategori = null): array
     {
-        $roundBatches = self::getMahjongRoundBatchesForBabak($connection, $turnamenId, $babak);
+        $roundBatches = self::getMahjongRoundBatchesForBabak($connection, $turnamenId, $babak, $idKategori);
 
         if ($roundBatches === []) {
             return ['rounds' => [], 'rows' => []];
@@ -472,17 +487,19 @@ class BornpadelMahjongTournaments
                 continue;
             }
 
-            $totalBabak = array_sum($roundScores);
+            $totalBabak = array_sum($roundScores) + (int) ($latestMember->poin_penyesuaian ?? 0);
 
             $rows[] = [
                 'id_pemain' => (int) ($latestMember->id_pemain ?? 0),
                 'id_peserta' => (int) ($latestMember->id_turnamen_peserta ?? 0),
                 'pemain_ids' => self::resolveStandingPemainIds($connection, $latestMember),
                 'nama' => self::resolveMemberDisplayName($connection, $latestMember),
+                'grup_nama' => $latestMember->_grup_nama ?? null,
                 'round_scores' => $roundScores,
                 'menang' => self::countMahjongWinsForPeserta($connection, $turnamenId, $babak, $pesertaId),
                 'total_babak' => $totalBabak,
                 'poin_babak' => $totalBabak,
+                'poin_akumulasi' => (int) ($latestMember->poin_akumulasi ?? 0),
                 'total_poin' => self::resolveMahjongTotalPoints(
                     $latestMember,
                     $totalBabak,
@@ -491,9 +508,7 @@ class BornpadelMahjongTournaments
             ];
         }
 
-        usort($rows, static function (array $a, array $b) {
-            return ($b['total_babak'] ?? 0) <=> ($a['total_babak'] ?? 0);
-        });
+        usort($rows, [self::class, 'compareMahjongStandingRows']);
 
         foreach ($rows as $index => &$row) {
             $row['rank'] = $index + 1;
@@ -504,15 +519,322 @@ class BornpadelMahjongTournaments
     }
 
     /**
+     * @param  array<string, mixed>  $a
+     * @param  array<string, mixed>  $b
+     */
+    private static function compareMahjongStandingRows(array $a, array $b): int
+    {
+        $score = self::compareMahjongStandingScores($a, $b);
+
+        if ($score !== 0) {
+            return $score;
+        }
+
+        return ((int) ($a['id_peserta'] ?? 0)) <=> ((int) ($b['id_peserta'] ?? 0));
+    }
+
+    /**
+     * @param  array<string, mixed>  $a
+     * @param  array<string, mixed>  $b
+     */
+    private static function compareMahjongStandingScores(array $a, array $b): int
+    {
+        $totalA = (int) ($a['total_babak'] ?? $a['total_poin'] ?? 0);
+        $totalB = (int) ($b['total_babak'] ?? $b['total_poin'] ?? 0);
+
+        if ($totalA !== $totalB) {
+            return $totalB <=> $totalA;
+        }
+
+        $winsA = (int) ($a['menang'] ?? 0);
+        $winsB = (int) ($b['menang'] ?? 0);
+
+        if ($winsA !== $winsB) {
+            return $winsB <=> $winsA;
+        }
+
+        return ((int) ($b['poin_akumulasi'] ?? 0)) <=> ((int) ($a['poin_akumulasi'] ?? 0));
+    }
+
+    /**
+     * @param  object  $turnamen
+     * @param  array<int, array<string, mixed>>  $sections
+     * @return array<int, array<string, mixed>>
+     */
+    private static function annotateMahjongStandingsSections($turnamen, array $sections): array
+    {
+        $pesertaIdsByBabak = [];
+        $maxBabak = 0;
+
+        foreach ($sections as $section) {
+            $babak = (int) ($section['babak'] ?? 0);
+            $maxBabak = max($maxBabak, $babak);
+            $ids = [];
+            foreach ($section['rows'] ?? [] as $row) {
+                if (! empty($row['id_peserta'])) {
+                    $ids[] = (int) $row['id_peserta'];
+                }
+            }
+            $pesertaIdsByBabak[$babak] = $ids;
+        }
+
+        $mahjongIsFinal = (bool) ($turnamen->mahjong_is_final ?? false);
+
+        foreach ($sections as &$section) {
+            $babak = (int) ($section['babak'] ?? 0);
+            $rows = array_values($section['rows'] ?? []);
+            $playerCount = count($rows);
+            $isActive = ! empty($section['is_active']);
+            $nextBabak = $babak + 1;
+            $nextIds = $pesertaIdsByBabak[$nextBabak] ?? null;
+            $hasNextBabak = is_array($nextIds) && $nextIds !== [];
+            $isFinal = $playerCount > 0
+                && $playerCount <= 4
+                && ! $hasNextBabak
+                && ($isActive || $mahjongIsFinal || $babak === $maxBabak);
+
+            $rankingNote = 'Peringkat berdasarkan Total babak, lalu Menang, lalu Akumulasi.';
+            $advanceKind = 'none';
+            $advanceNote = null;
+            $advanceCount = 0;
+
+            foreach ($rows as &$row) {
+                $row['advances'] = false;
+                $row['advance_status'] = null;
+                $row['is_cutline'] = false;
+            }
+            unset($row);
+
+            if ($hasNextBabak) {
+                $nextSet = array_fill_keys($nextIds, true);
+                $lastAdvancingRank = 0;
+                foreach ($rows as &$row) {
+                    $advances = isset($nextSet[(int) ($row['id_peserta'] ?? 0)]);
+                    $row['advances'] = $advances;
+                    $row['advance_status'] = $advances ? 'lolos' : null;
+                    if ($advances) {
+                        $lastAdvancingRank = max($lastAdvancingRank, (int) ($row['rank'] ?? 0));
+                    }
+                }
+                unset($row);
+                $rows = self::markMahjongCutline($rows, $lastAdvancingRank, ['lolos']);
+                $advanceKind = 'confirmed';
+                $advanceCount = 0;
+                foreach ($rows as $row) {
+                    if (! empty($row['advances'])) {
+                        $advanceCount++;
+                    }
+                }
+                $advanceNote = $advanceCount > 0
+                    ? 'Lolos ke Babak '.$nextBabak.' ('.$advanceCount.' pemain). Urutan: total babak → menang → akumulasi.'
+                    : null;
+            } elseif ($isFinal) {
+                $advanceKind = 'final';
+                foreach ($rows as &$row) {
+                    $rank = (int) ($row['rank'] ?? 0);
+                    if ($rank === 1) {
+                        $row['advance_status'] = 'juara';
+                        $row['advances'] = true;
+                    } elseif ($rank === 2) {
+                        $row['advance_status'] = 'runner_up';
+                    } elseif ($rank === 3) {
+                        $row['advance_status'] = 'third';
+                    }
+                }
+                unset($row);
+                $advanceNote = 'Babak final. Juara ditentukan dari total babak, lalu menang, lalu akumulasi.';
+            } elseif ($isActive && $playerCount > 4) {
+                $jumlahLolos = self::defaultMahjongAdvanceCount($playerCount);
+
+                if ($jumlahLolos && $jumlahLolos < $playerCount) {
+                    $selection = self::resolveMahjongAdvanceQualifiers($rows, $jumlahLolos);
+                    $autoIds = [];
+                    foreach ($selection['auto_qualified'] ?? [] as $qualified) {
+                        if (! empty($qualified['id_peserta'])) {
+                            $autoIds[] = (int) $qualified['id_peserta'];
+                        }
+                    }
+                    $contestedIds = [];
+                    foreach ($selection['contested'] ?? [] as $qualified) {
+                        if (! empty($qualified['id_peserta'])) {
+                            $contestedIds[] = (int) $qualified['id_peserta'];
+                        }
+                    }
+                    $qualifierIds = [];
+                    foreach ($selection['qualifiers'] ?? [] as $qualified) {
+                        if (! empty($qualified['id_peserta'])) {
+                            $qualifierIds[] = (int) $qualified['id_peserta'];
+                        }
+                    }
+
+                    $advanceKind = 'preview';
+                    $advanceCount = $jumlahLolos;
+                    $nextLabel = $jumlahLolos === 4 ? 'babak final' : 'babak berikutnya';
+                    $advanceNote = 'Pratinjau: '.$jumlahLolos.' pemain terbaik lanjut ke '.$nextLabel
+                        .' (total). Urutan: total babak → menang → akumulasi.';
+
+                    $entireFieldTied = ($selection['status'] ?? '') === 'needs_tiebreak'
+                        && $autoIds === []
+                        && count($contestedIds) === $playerCount;
+
+                    if ($entireFieldTied) {
+                        $advanceNote .= ' Semua pemain masih seri, jadi garis lolos belum ditandai.';
+                    } else {
+                        $autoSet = array_fill_keys($autoIds, true);
+                        $contestedSet = array_fill_keys($contestedIds, true);
+                        $qualifierSet = array_fill_keys($qualifierIds, true);
+                        $lastCutlineRank = 0;
+
+                        foreach ($rows as &$row) {
+                            $id = (int) ($row['id_peserta'] ?? 0);
+                            if (isset($qualifierSet[$id]) || isset($autoSet[$id])) {
+                                $row['advances'] = true;
+                                $row['advance_status'] = 'pratinjau';
+                                $lastCutlineRank = max($lastCutlineRank, (int) ($row['rank'] ?? 0));
+                            } elseif (isset($contestedSet[$id])) {
+                                $row['advance_status'] = 'seri';
+                                $lastCutlineRank = max($lastCutlineRank, (int) ($row['rank'] ?? 0));
+                            }
+                        }
+                        unset($row);
+
+                        $rows = self::markMahjongCutline($rows, $lastCutlineRank, ['pratinjau', 'seri']);
+
+                        if (($selection['status'] ?? '') === 'needs_tiebreak') {
+                            $advanceNote .= ' Ada seri di garis lolos — admin memilih saat Akhiri Babak.';
+                        }
+                    }
+                }
+            }
+
+            $section['rows'] = $rows;
+            $section['recap'] = $rows;
+            $section['ranking_note'] = $rankingNote;
+            $section['advance_kind'] = $advanceKind;
+            $section['advance_note'] = $advanceNote;
+            $section['advance_count'] = $advanceCount;
+            $section['next_babak'] = $hasNextBabak ? $nextBabak : null;
+            $section['is_final'] = $isFinal;
+        }
+        unset($section);
+
+        usort($sections, static function (array $a, array $b) {
+            return ((int) ($b['babak'] ?? 0)) <=> ((int) ($a['babak'] ?? 0));
+        });
+
+        return $sections;
+    }
+
+    private static function defaultMahjongAdvanceCount(int $playerCount): ?int
+    {
+        if ($playerCount <= 4) {
+            return null;
+        }
+
+        $count = (int) (4 * intdiv($playerCount, 8));
+        if ($count < 4) {
+            $count = 4;
+        }
+        if ($count >= $playerCount) {
+            $count = $playerCount - ($playerCount % 4 === 0 ? 4 : $playerCount % 4);
+        }
+        if ($count < 4 || $count >= $playerCount || $count % 4 !== 0) {
+            return null;
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  list<string>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    private static function markMahjongCutline(array $rows, int $cutlineRank, array $statuses): array
+    {
+        if ($cutlineRank <= 0) {
+            return $rows;
+        }
+
+        foreach ($rows as &$row) {
+            $row['is_cutline'] = in_array($row['advance_status'] ?? null, $statuses, true)
+                && (int) ($row['rank'] ?? 0) === $cutlineRank;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    private static function resolveMahjongAdvanceQualifiers(array $rows, int $jumlahLolos): array
+    {
+        usort($rows, [self::class, 'compareMahjongStandingRows']);
+
+        if ($jumlahLolos <= 0) {
+            return [
+                'status' => 'resolved',
+                'qualifiers' => [],
+            ];
+        }
+
+        if (count($rows) <= $jumlahLolos) {
+            return [
+                'status' => 'resolved',
+                'qualifiers' => array_values($rows),
+            ];
+        }
+
+        $autoQualified = [];
+        $remaining = $jumlahLolos;
+        $index = 0;
+        $sorted = array_values($rows);
+
+        while ($index < count($sorted) && $remaining > 0) {
+            $anchor = $sorted[$index];
+            $bubble = [];
+
+            for ($cursor = $index; $cursor < count($sorted); $cursor++) {
+                if (self::compareMahjongStandingScores($sorted[$cursor], $anchor) !== 0) {
+                    break;
+                }
+                $bubble[] = $sorted[$cursor];
+            }
+
+            $bubbleSize = count($bubble);
+
+            if ($bubbleSize <= $remaining) {
+                $autoQualified = array_merge($autoQualified, $bubble);
+                $remaining -= $bubbleSize;
+                $index += $bubbleSize;
+                continue;
+            }
+
+            return [
+                'status' => 'needs_tiebreak',
+                'auto_qualified' => array_values($autoQualified),
+                'contested' => array_values($bubble),
+                'slots_remaining' => $remaining,
+            ];
+        }
+
+        return [
+            'status' => 'resolved',
+            'qualifiers' => array_values($autoQualified),
+        ];
+    }
+
+    /**
      * Group grups of a babak into round batches (by the `ronde` column), each
      * batch carrying its members with the parent grup's active flag attached.
      *
      * @return array<int, array<int, object>>
      */
-    private static function getMahjongRoundBatchesForBabak($connection, int $turnamenId, int $babak): array
+    private static function getMahjongRoundBatchesForBabak($connection, int $turnamenId, int $babak, $idKategori = null): array
     {
-        $grups = $connection->table('grup')
-            ->where('id_turnamen', $turnamenId)
+        $grups = self::mahjongGrupQuery($connection, $turnamenId, $idKategori)
             ->where('babak', $babak)
             ->orderBy('ronde')
             ->orderBy('id')
@@ -529,6 +851,7 @@ class BornpadelMahjongTournaments
             $members = self::orderedGroupMembers($connection, $grup->id)->all();
             foreach ($members as $member) {
                 $member->_grup_is_aktif = (bool) $grup->is_aktif;
+                $member->_grup_nama = $grup->nama ?? null;
             }
 
             $grup->members = $members;
@@ -958,6 +1281,76 @@ class BornpadelMahjongTournaments
             || ($tournament['jenis'] ?? null) === 'mahjong_team';
     }
 
+    /**
+     * Whether Omahjong may show Input Poin (Bornpadel "API skor eksternal").
+     *
+     * @param  array<string, mixed>  $tournament
+     * @param  array<string, mixed>  $groupsPayload
+     */
+    public static function canInputPublicScores(array $tournament, $idKategori = null, array $groupsPayload = []): bool
+    {
+        if (($tournament['status'] ?? null) !== 'ongoing') {
+            return false;
+        }
+
+        return self::isExternalScoringEnabled($tournament, $idKategori, $groupsPayload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $tournament
+     * @param  array<string, mixed>  $groupsPayload
+     */
+    public static function isExternalScoringEnabled(array $tournament, $idKategori = null, array $groupsPayload = []): bool
+    {
+        if ($idKategori !== null && $idKategori !== '') {
+            foreach ($tournament['kategori'] ?? [] as $kat) {
+                if ((int) ($kat['id'] ?? 0) !== (int) $idKategori) {
+                    continue;
+                }
+
+                if (array_key_exists('mahjong_external_scoring_enabled', $kat)
+                    && $kat['mahjong_external_scoring_enabled'] !== null) {
+                    return (bool) $kat['mahjong_external_scoring_enabled'];
+                }
+            }
+        }
+
+        if (array_key_exists('mahjong_external_scoring_enabled', $tournament)
+            && $tournament['mahjong_external_scoring_enabled'] !== null) {
+            return (bool) $tournament['mahjong_external_scoring_enabled'];
+        }
+
+        $fromGroups = $groupsPayload['turnamen']['mahjong_external_scoring_enabled'] ?? null;
+        if ($fromGroups !== null) {
+            return (bool) $fromGroups;
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  object|array<string, mixed>|null  $row
+     */
+    private static function readMahjongExternalScoringEnabled($row, bool $default = true): bool
+    {
+        if (is_array($row)) {
+            if (! array_key_exists('mahjong_external_scoring_enabled', $row)
+                || $row['mahjong_external_scoring_enabled'] === null) {
+                return $default;
+            }
+
+            return (bool) $row['mahjong_external_scoring_enabled'];
+        }
+
+        if (! is_object($row)
+            || ! property_exists($row, 'mahjong_external_scoring_enabled')
+            || $row->mahjong_external_scoring_enabled === null) {
+            return $default;
+        }
+
+        return (bool) $row->mahjong_external_scoring_enabled;
+    }
+
     public static function registrationRosterNoun(array $tournament, bool $titleCase = false): string
     {
         $noun = self::allowsGroupRegistration($tournament)
@@ -1055,6 +1448,10 @@ class BornpadelMahjongTournaments
                 $defaultKategori['mahjong_is_final']
                 ?? ($row->mahjong_is_final ?? false)
             ),
+            'mahjong_external_scoring_enabled' => self::readMahjongExternalScoringEnabled(
+                $defaultKategori ?? [],
+                self::readMahjongExternalScoringEnabled($row, true)
+            ),
             // Same as Bornpadel guest landing: turnamen status drives the Daftar button.
             'registration_open' => ($row->status ?? null) === 'open',
             'allows_group_registration' => $allowsGroup,
@@ -1098,6 +1495,7 @@ class BornpadelMahjongTournaments
                         'harga' => $row->harga ?? 0,
                         'status' => $row->status ?? null,
                         'mahjong_is_final' => (bool) ($row->mahjong_is_final ?? false),
+                        'mahjong_external_scoring_enabled' => self::readMahjongExternalScoringEnabled($row, true),
                         'registration_open' => ($row->status ?? null) === 'open',
                         'players_per_group' => $playersPerGroup,
                     ];
@@ -2681,6 +3079,7 @@ class BornpadelMahjongTournaments
                         'jenis' => $turnamen->jenis ?? 'mahjong',
                         'status' => $turnamen->status ?? null,
                         'mahjong_is_final' => (bool) ($turnamen->mahjong_is_final ?? false),
+                        'mahjong_external_scoring_enabled' => self::readMahjongExternalScoringEnabled($turnamen, true),
                     ],
                     'groups' => $groups,
                 ],

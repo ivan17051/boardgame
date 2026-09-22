@@ -28,14 +28,11 @@
     color: #6c757d;
     margin: 0.35rem 0 0;
   }
+  .standings-heading {
+    color: var(--brand-dark);
+  }
   .babak-section {
     margin-bottom: 1.75rem;
-  }
-  .babak-title {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--brand-dark);
-    margin-bottom: 0.85rem;
   }
   .standings-table-card {
     border: 1px solid rgba(0, 97, 49, 0.12);
@@ -56,46 +53,8 @@
   .table > :not(caption) > * > * {
     vertical-align: middle;
   }
-  .leader-row {
-    background: rgba(0, 97, 49, 0.08);
-  }
-  .rank-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.6rem;
-    font-weight: 700;
-    color: #495057;
-  }
-  .score-pill {
-    display: inline-block;
-    min-width: 2.25rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    background: #2f3b34;
-    color: #fff;
-  }
-  .total-pill {
-    display: inline-block;
-    min-width: 2.25rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    background: #f5b544;
-    color: #5c3d00;
-  }
-  .win-pill {
-    display: inline-block;
-    min-width: 2.25rem;
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    background: #fff3cd;
-    color: #7a5c00;
+  .standings-note {
+    background: #f8faf9;
   }
 </style>
 @endpush
@@ -105,9 +64,13 @@
     $turnamen = $tournament ?? ($standings['turnamen'] ?? []);
     $idKategori = $idKategori ?? null;
     $sections = collect($standings['sections'] ?? [])
-      ->sortByDesc(fn ($section) => (int) ($section['babak'] ?? 0))
+      ->sortByDesc(function ($section) {
+        return (int) ($section['babak'] ?? 0);
+      })
       ->values()
       ->all();
+    $isMahjongTeam = ($turnamen['jenis'] ?? null) === 'mahjong_team';
+    $klasemenTitle = $isMahjongTeam ? 'Klasemen Tim' : 'Klasemen Mahjong';
 
     $status = $turnamen['status'] ?? '';
     if ($status === 'ongoing') {
@@ -126,7 +89,7 @@
     <a href="{{ route('home') }}" class="btn btn-sm btn-outline-secondary mb-3">
       <i class="bi bi-house me-1"></i>Beranda
     </a>
-    <h1><i class="bi bi-bar-chart-line me-2"></i>Klasemen Mahjong</h1>
+    <h1><i class="bi bi-bar-chart-line me-2"></i>{{ $klasemenTitle }}</h1>
     <p>{{ $turnamen['nama'] ?? 'Turnamen Mahjong' }}</p>
     @include('public.partials.tournament-syarat', ['tournament' => $turnamen])
     <div class="mt-2 d-flex flex-wrap justify-content-center justify-content-md-start align-items-center gap-2">
@@ -149,82 +112,150 @@
     </div>
   @endif
 
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h5 class="mb-0 standings-heading">
+      <i class="bi bi-bar-chart-steps me-2"></i>{{ $klasemenTitle }}
+      <small class="text-muted fw-normal">— {{ $turnamen['nama'] ?? 'Turnamen Mahjong' }}</small>
+    </h5>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.location.reload()">
+      <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+    </button>
+  </div>
+
   @if (empty($sections))
-    <div class="card standings-table-card">
-      <div class="card-body text-center text-secondary py-5">
-        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-        Belum ada data klasemen.
-      </div>
+    <div class="alert alert-light border text-center mb-0">
+      <i class="bi bi-trophy text-muted d-block mb-2 fs-4"></i>
+      Belum ada data klasemen.
     </div>
   @else
+    <div class="alert alert-light border small mb-3">
+      <strong>Cara peringkat:</strong> Total babak → Menang (W) → Akumulasi.
+      Baris hijau menandai pemain yang lolos ke babak berikutnya.
+    </div>
+
     @foreach ($sections as $section)
       @php
         $rounds = $section['rounds'] ?? [];
-        $roundCount = count($rounds);
         $rows = $section['rows'] ?? [];
+        $advanceKind = $section['advance_kind'] ?? 'none';
+        $showGrup = collect($rows)->contains(function ($row) {
+          return filled($row['grup_nama'] ?? null);
+        });
+        $colCount = 6 + count($rounds) + ($showGrup ? 1 : 0);
+        $rankingNote = $section['ranking_note'] ?? ($standings['ranking_note'] ?? 'Peringkat berdasarkan Total babak, lalu Menang, lalu Akumulasi.');
       @endphp
       <section class="babak-section">
-        <div class="d-flex flex-wrap align-items-center gap-2 babak-title">
-          <span><i class="bi bi-layers me-1 text-primary"></i>Babak {{ $section['babak'] ?? '—' }}</span>
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+          <h6 class="mb-0 fw-semibold">
+            <i class="bi bi-layers me-1 text-primary"></i>Babak {{ $section['babak'] ?? '—' }}
+          </h6>
           @if (! empty($section['is_active']))
             <span class="badge text-bg-success">Berlangsung</span>
           @endif
+          @if (! empty($section['is_final']))
+            <span class="badge text-bg-warning text-dark">Final</span>
+          @elseif ($advanceKind === 'confirmed' && ! empty($section['next_babak']))
+            <span class="badge text-bg-primary">Lolos ke Babak {{ $section['next_babak'] }}</span>
+          @elseif ($advanceKind === 'preview' && ! empty($section['advance_count']))
+            <span class="badge border text-secondary">Pratinjau {{ $section['advance_count'] }} lolos</span>
+          @endif
         </div>
 
-        <div class="card standings-table-card">
+        <div class="card standings-table-card border-0 shadow-sm">
           <div class="table-responsive">
-            <table class="table table-hover">
-              <thead>
+            <table class="table table-hover mb-0 align-middle">
+              <thead class="table-light">
                 <tr>
-                  <th style="width: 3.5rem;" class="text-center">#</th>
+                  <th class="text-center" style="width:3rem">#</th>
                   <th>Pemain</th>
+                  @if ($showGrup)
+                    <th>Grup</th>
+                  @endif
                   @foreach ($rounds as $round)
                     <th class="text-center">{{ $round['label'] ?? ('Ronde ' . ($round['round'] ?? '')) }}</th>
                   @endforeach
-                  <th class="text-center" title="Jumlah menang (ronde)">Menang</th>
-                  <th class="text-center">Total Babak</th>
+                  <th class="text-center" title="Kriteria 1">Total Babak</th>
+                  <th class="text-center" title="Kriteria 2: jumlah menang">W</th>
+                  <th class="text-center" title="Kriteria 3">Akumulasi</th>
+                  <th class="text-center" style="width:7rem">Status</th>
                 </tr>
               </thead>
               <tbody>
                 @forelse ($rows as $row)
                   @php
-                    $rank = (int) ($row['rank'] ?? 0);
+                    $statusRow = $row['advance_status'] ?? null;
+                    $rowClass = '';
+                    if (in_array($statusRow, ['lolos', 'pratinjau', 'juara'], true)) {
+                      $rowClass = 'table-success';
+                    } elseif ($statusRow === 'seri') {
+                      $rowClass = 'table-warning';
+                    }
+                    $cutlineStyle = ! empty($row['is_cutline'])
+                      ? 'border-bottom: 2px solid var(--bs-success);'
+                      : '';
                     $roundScores = $row['round_scores'] ?? [];
                   @endphp
-                  <tr class="{{ $rank === 1 ? 'leader-row' : '' }}">
-                    <td class="text-center">
-                      @if ($rank === 1)
+                  <tr class="{{ $rowClass }}" @if ($cutlineStyle) style="{{ $cutlineStyle }}" @endif>
+                    <td class="text-center fw-bold">
+                      @if ((int) ($row['rank'] ?? 0) === 1)
                         <i class="bi bi-trophy-fill text-warning"></i>
                       @else
-                        <span class="rank-num">{{ $rank }}</span>
+                        {{ $row['rank'] ?? '—' }}
                       @endif
                     </td>
                     <td class="fw-semibold">{{ $row['nama'] ?? '—' }}</td>
-                    @for ($i = 0; $i < $roundCount; $i++)
+                    @if ($showGrup)
+                      <td class="text-muted">{{ $row['grup_nama'] ?? '—' }}</td>
+                    @endif
+                    @foreach ($roundScores as $score)
                       <td class="text-center">
-                        @if (array_key_exists($i, $roundScores))
-                          <span class="score-pill">{{ (int) $roundScores[$i] }}</span>
-                        @else
-                          <span class="text-muted">—</span>
-                        @endif
+                        <span class="badge text-bg-secondary">{{ $score }}</span>
                       </td>
+                    @endforeach
+                    @for ($i = count($roundScores); $i < count($rounds); $i++)
+                      <td class="text-center text-muted">—</td>
                     @endfor
                     <td class="text-center">
-                      <span class="win-pill">{{ (int) ($row['menang'] ?? 0) }}</span>
+                      <span class="badge text-bg-primary">{{ $row['total_babak'] ?? 0 }}</span>
                     </td>
+                    <td class="text-center">{{ $row['menang'] ?? 0 }}</td>
+                    <td class="text-center text-muted">{{ $row['poin_akumulasi'] ?? 0 }}</td>
                     <td class="text-center">
-                      <span class="total-pill">{{ (int) ($row['total_babak'] ?? 0) }}</span>
+                      @if ($statusRow === 'lolos')
+                        <span class="badge text-bg-success">Lolos</span>
+                      @elseif ($statusRow === 'pratinjau')
+                        <span class="badge text-bg-success">Lolos*</span>
+                      @elseif ($statusRow === 'seri')
+                        <span class="badge text-bg-warning text-dark">Seri</span>
+                      @elseif ($statusRow === 'juara')
+                        <span class="badge text-bg-warning text-dark">Juara</span>
+                      @elseif ($statusRow === 'runner_up')
+                        <span class="badge text-bg-light text-dark border">Ke-2</span>
+                      @elseif ($statusRow === 'third')
+                        <span class="badge text-bg-light text-dark border">Ke-3</span>
+                      @endif
                     </td>
                   </tr>
                 @empty
                   <tr>
-                    <td colspan="{{ 4 + $roundCount }}" class="text-center text-secondary py-4">
+                    <td colspan="{{ $colCount }}" class="text-center text-muted py-4">
                       Belum ada data pemain pada babak ini.
                     </td>
                   </tr>
                 @endforelse
               </tbody>
             </table>
+          </div>
+          <div class="px-3 py-2 border-top standings-note small text-muted">
+            {{ $rankingNote }}
+            @if (! empty($section['advance_note']))
+              <div class="mt-1">
+                @if ($advanceKind === 'preview' && collect($rows)->contains(function ($row) { return ($row['advance_status'] ?? null) === 'pratinjau'; }))
+                  <span class="badge text-bg-success me-1">Lolos*</span> pratinjau berdasarkan total.
+                @endif
+                {{ $section['advance_note'] }}
+              </div>
+            @endif
           </div>
         </div>
       </section>
