@@ -179,29 +179,53 @@ class BornpadelMahjongTournaments
                 }
             }
 
+            $showGroups = ($turnamen->jenis ?? '') === 'mahjong_team'
+                && Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran')
+                && Schema::connection('bornpadel')->hasTable('turnamen_grup_pendaftaran_member');
+
+            $select = [
+                'turnamen_peserta.id',
+                'turnamen_peserta.status',
+                'm_pemain.nama',
+            ];
+
             $query = $connection->table('turnamen_peserta')
                 ->leftJoin('m_pemain', 'm_pemain.id', '=', 'turnamen_peserta.id_pemain1')
                 ->where('turnamen_peserta.id_turnamen', $id)
                 ->where('turnamen_peserta.status', '!=', 'rejected')
-                ->orderBy('turnamen_peserta.id')
-                ->select([
-                    'turnamen_peserta.id',
-                    'turnamen_peserta.status',
-                    'm_pemain.nama',
-                ]);
+                ->orderBy('turnamen_peserta.id');
+
+            if ($showGroups) {
+                $query->leftJoin(
+                    'turnamen_grup_pendaftaran_member',
+                    'turnamen_grup_pendaftaran_member.id_peserta',
+                    '=',
+                    'turnamen_peserta.id'
+                )->leftJoin(
+                    'turnamen_grup_pendaftaran',
+                    'turnamen_grup_pendaftaran.id',
+                    '=',
+                    'turnamen_grup_pendaftaran_member.id_grup_pendaftaran'
+                );
+                $select[] = 'turnamen_grup_pendaftaran.id as group_id';
+                $select[] = 'turnamen_grup_pendaftaran.nama as group_nama';
+                $select[] = 'turnamen_grup_pendaftaran_member.urutan as group_urutan';
+            }
+
+            $query->select($select);
 
             if ($kategoriId !== null
                 && Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'id_kategori')) {
                 $query->where('turnamen_peserta.id_kategori', $kategoriId);
             }
 
-            $items = $query->get()->map(function ($row) {
-                return [
-                    'id' => (int) $row->id,
-                    'nama' => $row->nama ?: '—',
-                    'status' => $row->status ?? null,
-                ];
+            $items = $query->get()->map(function ($row) use ($showGroups) {
+                return self::mapPublicParticipantRow($row, $showGroups);
             })->values()->all();
+
+            if ($showGroups) {
+                $items = self::sortParticipantsByRegistrationGroup($items);
+            }
 
             return [
                 'type' => 'single',
@@ -246,18 +270,25 @@ class BornpadelMahjongTournaments
             if ($response->successful() && $response->json('success') === true) {
                 $data = $response->json('data') ?? [];
                 $items = is_array($data['items'] ?? null) ? $data['items'] : [];
+                $mapped = array_map(static function ($item) {
+                    return self::mapPublicParticipantRow($item, true);
+                }, $items);
+
+                $hasGroups = false;
+                foreach ($mapped as $item) {
+                    if (! empty($item['group_id'])) {
+                        $hasGroups = true;
+                        break;
+                    }
+                }
+
+                if ($hasGroups) {
+                    $mapped = self::sortParticipantsByRegistrationGroup($mapped);
+                }
 
                 return [
                     'type' => (string) ($data['type'] ?? 'single'),
-                    'items' => array_map(static function ($item) {
-                        $item = is_array($item) ? $item : [];
-
-                        return [
-                            'id' => isset($item['id']) ? (int) $item['id'] : null,
-                            'nama' => $item['nama'] ?? $item['display'] ?? $item['label'] ?? '—',
-                            'status' => $item['status'] ?? null,
-                        ];
-                    }, $items),
+                    'items' => $mapped,
                     'error' => null,
                 ];
             }
@@ -274,6 +305,66 @@ class BornpadelMahjongTournaments
                 'error' => 'Tidak dapat terhubung ke server turnamen.',
             ];
         }
+    }
+
+    /**
+     * @param  object|array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private static function mapPublicParticipantRow($row, bool $includeGroup = false): array
+    {
+        $data = is_array($row) ? $row : (array) $row;
+        $nama = $data['nama'] ?? $data['display'] ?? $data['label'] ?? null;
+        $item = [
+            'id' => isset($data['id']) ? (int) $data['id'] : null,
+            'nama' => $nama !== null && $nama !== '' ? (string) $nama : '—',
+            'status' => $data['status'] ?? null,
+        ];
+
+        if (! $includeGroup) {
+            return $item;
+        }
+
+        $groupId = $data['group_id'] ?? null;
+        $item['group_id'] = $groupId !== null && $groupId !== '' ? (int) $groupId : null;
+        $item['group_nama'] = ! empty($data['group_nama']) ? (string) $data['group_nama'] : null;
+        $item['group_urutan'] = isset($data['group_urutan']) ? (int) $data['group_urutan'] : 0;
+
+        return $item;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private static function sortParticipantsByRegistrationGroup(array $items): array
+    {
+        usort($items, static function ($a, $b) {
+            return strcmp(
+                self::participantGroupSortKey($a),
+                self::participantGroupSortKey($b)
+            );
+        });
+
+        foreach ($items as &$item) {
+            unset($item['group_urutan']);
+        }
+        unset($item);
+
+        return array_values($items);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private static function participantGroupSortKey(array $item): string
+    {
+        $grouped = empty($item['group_id']) ? '1' : '0';
+        $groupName = mb_strtolower((string) ($item['group_nama'] ?? ''));
+        $urutan = str_pad((string) ((int) ($item['group_urutan'] ?? 0)), 8, '0', STR_PAD_LEFT);
+        $playerName = mb_strtolower((string) ($item['nama'] ?? ''));
+
+        return $grouped.'|'.$groupName.'|'.$urutan.'|'.$playerName;
     }
 
     /**

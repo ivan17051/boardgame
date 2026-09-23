@@ -54,6 +54,12 @@
     max-width: 36rem;
     margin: 0 auto 1.25rem;
   }
+  .participants-card .participant-group-row td {
+    background: #eef3f0;
+    color: var(--brand-dark);
+    border-top: 1px solid rgba(0, 97, 49, 0.12);
+    border-bottom: 1px solid rgba(0, 97, 49, 0.08);
+  }
 </style>
 @endpush
 
@@ -76,6 +82,16 @@
     $selectedKategori = collect($tournament['kategori'] ?? [])->first(function ($kat) use ($idKategori) {
       return (string) ($kat['id'] ?? '') === (string) $idKategori;
     });
+    $showGroups = \App\Support\BornpadelMahjongTournaments::allowsGroupRegistration($tournament);
+    if (! $showGroups) {
+      foreach ($participants as $item) {
+        if (! empty($item['group_id']) || ! empty($item['group_nama'])) {
+          $showGroups = true;
+          break;
+        }
+      }
+    }
+    $prevGroupKey = '__unset__';
   @endphp
 
   <header class="page-header text-center mb-4">
@@ -145,6 +161,18 @@
             </thead>
             <tbody>
               @foreach ($participants as $index => $item)
+                @if ($showGroups)
+                  @php $groupKey = ! empty($item['group_id']) ? 'g:'.$item['group_id'] : 'solo'; @endphp
+                  @if ($groupKey !== $prevGroupKey)
+                    <tr class="participant-group-row">
+                      <td colspan="3" class="small fw-semibold py-2">
+                        <i class="bi bi-people me-1"></i>
+                        {{ $item['group_nama'] ?: 'Individu / Belum berkelompok' }}
+                      </td>
+                    </tr>
+                    @php $prevGroupKey = $groupKey; @endphp
+                  @endif
+                @endif
                 <tr>
                   <td>{{ $index + 1 }}</td>
                   <td class="fw-semibold">{{ $item['nama'] ?? '—' }}</td>

@@ -39,12 +39,14 @@
             ];
         }
 
-        $tabs[] = [
-            'key' => 'standings',
-            'label' => 'Klasemen',
-            'icon' => 'bi-bar-chart-line',
-            'url' => route('public.mahjong-tournaments.standings', array_merge(['id' => $tournamentId], $query)),
-        ];
+        if ($status !== 'open') {
+            $tabs[] = [
+                'key' => 'standings',
+                'label' => 'Klasemen',
+                'icon' => 'bi-bar-chart-line',
+                'url' => route('public.mahjong-tournaments.standings', array_merge(['id' => $tournamentId], $query)),
+            ];
+        }
     }
 @endphp
 
