@@ -122,7 +122,66 @@
     </button>
   </div>
 
-  @if (empty($sections))
+  @if ($isMahjongTeam)
+    @php
+      $teams = $standings['teams'] ?? $standings['groups'] ?? [];
+    @endphp
+    @if (empty($teams))
+      <div class="alert alert-light border text-center mb-0">
+        <i class="bi bi-trophy text-muted d-block mb-2 fs-4"></i>
+        Belum ada data klasemen tim.
+      </div>
+    @else
+      <div class="card standings-table-card border-0 shadow-sm">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th class="text-center" style="width:3rem">#</th>
+                <th>Tim</th>
+                <th class="text-center" style="width:7rem">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @foreach ($teams as $row)
+                @php
+                  $members = $row['members'] ?? $row['standings'] ?? [];
+                @endphp
+                <tr class="{{ (int) ($row['rank'] ?? 0) === 1 ? 'table-success' : '' }}">
+                  <td class="text-center fw-bold">
+                    @if ((int) ($row['rank'] ?? 0) === 1)
+                      <i class="bi bi-trophy-fill text-warning"></i>
+                    @else
+                      {{ $row['rank'] ?? '—' }}
+                    @endif
+                  </td>
+                  <td>
+                    <div class="fw-semibold">{{ $row['nama'] ?? '—' }}</div>
+                    @if (! empty($members))
+                      <ul class="list-unstyled mb-0 mt-1 small text-muted">
+                        @foreach ($members as $member)
+                          <li>
+                            {{ $member['nama'] ?? '—' }}
+                            <span class="ms-1">{{ (int) ($member['poin_didapat'] ?? 0) }}</span>
+                          </li>
+                        @endforeach
+                      </ul>
+                    @endif
+                  </td>
+                  <td class="text-center">
+                    <span class="badge text-bg-primary">{{ (int) ($row['total_poin'] ?? 0) }}</span>
+                  </td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+        <div class="px-3 py-2 border-top standings-note small text-muted">
+          {{ $standings['ranking_note'] ?? 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.' }}
+        </div>
+      </div>
+    @endif
+  @elseif (empty($sections))
     <div class="alert alert-light border text-center mb-0">
       <i class="bi bi-trophy text-muted d-block mb-2 fs-4"></i>
       Belum ada data klasemen.
@@ -141,7 +200,7 @@
         $showGrup = collect($rows)->contains(function ($row) {
           return filled($row['grup_nama'] ?? null);
         });
-        $colCount = 6 + count($rounds) + ($showGrup ? 1 : 0);
+        $colCount = 5 + count($rounds) + ($showGrup ? 1 : 0);
         $rankingNote = $section['ranking_note'] ?? ($standings['ranking_note'] ?? 'Peringkat berdasarkan Total babak, lalu Menang, lalu Akumulasi.');
       @endphp
       <section class="babak-section">
@@ -177,7 +236,6 @@
                   <th class="text-center" title="Kriteria 1">Total Babak</th>
                   <th class="text-center" title="Kriteria 2: jumlah menang">W</th>
                   <th class="text-center" title="Kriteria 3">Akumulasi</th>
-                  <th class="text-center" style="width:7rem">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -220,21 +278,6 @@
                     </td>
                     <td class="text-center">{{ $row['menang'] ?? 0 }}</td>
                     <td class="text-center text-muted">{{ $row['poin_akumulasi'] ?? 0 }}</td>
-                    <td class="text-center">
-                      @if ($statusRow === 'lolos')
-                        <span class="badge text-bg-success">Lolos</span>
-                      @elseif ($statusRow === 'pratinjau')
-                        <span class="badge text-bg-success">Lolos*</span>
-                      @elseif ($statusRow === 'seri')
-                        <span class="badge text-bg-warning text-dark">Seri</span>
-                      @elseif ($statusRow === 'juara')
-                        <span class="badge text-bg-warning text-dark">Juara</span>
-                      @elseif ($statusRow === 'runner_up')
-                        <span class="badge text-bg-light text-dark border">Ke-2</span>
-                      @elseif ($statusRow === 'third')
-                        <span class="badge text-bg-light text-dark border">Ke-3</span>
-                      @endif
-                    </td>
                   </tr>
                 @empty
                   <tr>

@@ -60,6 +60,19 @@
     border: 1px solid rgba(0, 97, 49, 0.15);
     box-shadow: 0 4px 14px rgba(0, 60, 30, 0.08);
   }
+  .bukti-preview {
+    display: none;
+    margin-top: 0.75rem;
+  }
+  .bukti-preview img {
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0, 97, 49, 0.15);
+    box-shadow: 0 4px 14px rgba(0, 60, 30, 0.08);
+    background: #f8f9fa;
+  }
 </style>
 @endpush
 
@@ -156,6 +169,36 @@
           ])
         @endif
 
+        <div class="mb-4 pt-3 border-top">
+          <label for="bukti_bayar" class="form-label fw-semibold">
+            Bukti Transfer <span class="text-muted fw-normal">(opsional)</span>
+          </label>
+          <input
+            type="file"
+            name="bukti_bayar"
+            id="bukti_bayar"
+            class="form-control js-bukti-input @error('bukti_bayar') is-invalid @enderror"
+            accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+            data-preview="#buktiPreview"
+            data-preview-img="#buktiPreviewImg"
+            data-preview-name="#buktiPreviewName"
+          />
+          <div class="form-text">
+            Unggah bukti pembayaran biaya turnamen. Format JPG, PNG, WebP, atau PDF. Maks. 5 MB.
+            @if (isset($tournament['harga']) && (float) $tournament['harga'] > 0)
+              Biaya: Rp {{ number_format((float) $tournament['harga'], 0, ',', '.') }}.
+            @endif
+            Bisa juga diunggah nanti setelah pendaftaran.
+          </div>
+          @error('bukti_bayar')
+            <div class="invalid-feedback">{{ $message }}</div>
+          @enderror
+          <div class="bukti-preview" id="buktiPreview">
+            <img src="" alt="Pratinjau bukti transfer" id="buktiPreviewImg" />
+            <div class="small text-secondary mt-2" id="buktiPreviewName"></div>
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary btn-submit w-100">
           <i class="bi bi-send me-1"></i>{{ $isGroupMode ? 'Kirim Pendaftaran Tim' : 'Kirim Pendaftaran' }}
         </button>
@@ -186,6 +229,39 @@
           preview.style.display = 'block';
         };
         reader.readAsDataURL(file);
+      });
+    });
+
+    document.querySelectorAll('.js-bukti-input').forEach((input) => {
+      const preview = document.querySelector(input.dataset.preview || '');
+      const previewImg = document.querySelector(input.dataset.previewImg || '');
+      const previewName = document.querySelector(input.dataset.previewName || '');
+      if (!preview) return;
+
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
+        if (!file) {
+          preview.style.display = 'none';
+          if (previewImg) previewImg.src = '';
+          if (previewName) previewName.textContent = '';
+          return;
+        }
+
+        preview.style.display = 'block';
+        if (previewName) previewName.textContent = file.name;
+        if (previewImg) {
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              previewImg.src = e.target.result;
+              previewImg.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+          } else {
+            previewImg.src = '';
+            previewImg.style.display = 'none';
+          }
+        }
       });
     });
   })();

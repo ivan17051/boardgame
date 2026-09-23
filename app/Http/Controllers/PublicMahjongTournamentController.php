@@ -37,9 +37,10 @@ class PublicMahjongTournamentController extends Controller
             $data = [
                 'turnamen' => $tournament,
                 'sections' => [],
-                'overall' => [],
-                'recap' => [],
-                'babak_numbers' => [],
+            'overall' => [],
+            'recap' => [],
+            'babak_numbers' => [],
+            'teams' => [],
             ];
         }
 
@@ -576,6 +577,7 @@ class PublicMahjongTournamentController extends Controller
             'gender' => ['required', 'in:male,female'],
             'tgl_lahir' => ['nullable', 'date', 'before:today'],
             'foto' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'bukti_bayar' => ['nullable', 'file', 'mimes:jpeg,jpg,png,webp,pdf', 'max:5120'],
             'registration_mode' => ['nullable', 'in:single,group'],
             'nama_grup' => [$isGroupMode ? 'required' : 'nullable', 'string', 'max:255'],
         ];
@@ -591,6 +593,8 @@ class PublicMahjongTournamentController extends Controller
             'foto.image' => 'Foto harus berupa gambar.',
             'foto.mimes' => 'Foto harus berformat JPG, PNG, atau WebP.',
             'foto.max' => 'Ukuran foto maksimal 5 MB.',
+            'bukti_bayar.mimes' => 'Bukti transfer harus berformat JPG, PNG, WebP, atau PDF.',
+            'bukti_bayar.max' => 'Ukuran bukti transfer maksimal 5 MB.',
             'nama_grup.required' => 'Nama '.BornpadelMahjongTournaments::registrationRosterNoun($tournament).' wajib diisi.',
         ];
 
@@ -644,7 +648,7 @@ class PublicMahjongTournamentController extends Controller
         $registration = is_array($checkData['registration'] ?? null) ? $checkData['registration'] : null;
         $registerData = is_array($result['data'] ?? null) ? $result['data'] : [];
 
-        session()->put($this->registerSessionKey($id), [
+        $session = [
             'registration_mode' => 'single',
             'nama_grup' => null,
             'no_hp' => $noHp,
@@ -666,7 +670,9 @@ class PublicMahjongTournamentController extends Controller
             ]],
             'group' => $checkData['group'] ?? null,
             'just_registered' => true,
-        ]);
+        ];
+        $session = $this->attachSubmittedReceipt($request, $id, $session);
+        session()->put($this->registerSessionKey($id), $session);
 
         return redirect()
             ->route('public.mahjong-tournaments.register.status', $id)
@@ -990,7 +996,7 @@ class PublicMahjongTournamentController extends Controller
         $pemain = is_array($checkData['pemain'] ?? null) ? $checkData['pemain'] : null;
         $resultPlayers = is_array($registerData['players'] ?? null) ? $registerData['players'] : $players;
 
-        session()->put($this->registerSessionKey($id), [
+        $session = [
             'registration_mode' => 'group',
             'nama_grup' => $registerData['nama_grup'] ?? $namaGrup,
             'no_hp' => $noHp,
@@ -1006,10 +1012,44 @@ class PublicMahjongTournamentController extends Controller
             'players' => $resultPlayers,
             'group' => $group,
             'just_registered' => true,
-        ]);
+        ];
+        $session = $this->attachSubmittedReceipt($request, $id, $session);
+        session()->put($this->registerSessionKey($id), $session);
 
         return redirect()
             ->route('public.mahjong-tournaments.register.status', $id)
             ->with('success', $result['message'] ?? 'Pendaftaran tim berhasil dikirim.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $session
+     * @return array<string, mixed>
+     */
+    private function attachSubmittedReceipt(Request $request, int $id, array $session): array
+    {
+        $file = $request->file('bukti_bayar');
+        if (! $file) {
+            return $session;
+        }
+
+        $result = BornpadelMahjongTournaments::uploadPaymentReceipt([
+            'id_turnamen' => $id,
+            'id_kategori' => $session['id_kategori'] ?? null,
+            'no_hp' => $session['no_hp'] ?? null,
+            'peserta_id' => $session['peserta_id'] ?? null,
+        ], $file);
+
+        if ($result['error'] !== null) {
+            session()->flash('warning', $result['error']);
+
+            return $session;
+        }
+
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+        $session['registration_status'] = $data['status'] ?? $session['registration_status'] ?? null;
+        $session['bukti_bayar_url'] = $data['bukti_bayar_url'] ?? $session['bukti_bayar_url'] ?? null;
+        $session['peserta_id'] = $data['peserta_id'] ?? $session['peserta_id'] ?? null;
+
+        return $session;
     }
 }

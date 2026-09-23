@@ -86,6 +86,9 @@
       @if (session('success'))
         <div class="alert alert-success">{{ session('success') }}</div>
       @endif
+      @if (session('warning'))
+        <div class="alert alert-warning">{{ session('warning') }}</div>
+      @endif
 
       <div class="alert alert-{{ ! empty($justRegistered) ? 'success' : 'info' }} mb-4">
         <i class="bi bi-info-circle me-1"></i>

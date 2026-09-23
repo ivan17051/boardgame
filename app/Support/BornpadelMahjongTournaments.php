@@ -318,6 +318,30 @@ class BornpadelMahjongTournaments
                 ];
             }
 
+            if (($turnamen->jenis ?? '') === 'mahjong_team') {
+                $teams = self::buildMahjongTeamStandings($connection, $id, $idKategori);
+
+                return [
+                    'data' => [
+                        'turnamen' => [
+                            'id' => (int) $turnamen->id,
+                            'nama' => $turnamen->nama,
+                            'jenis' => 'mahjong_team',
+                            'status' => $turnamen->status ?? null,
+                            'mahjong_is_final' => (bool) ($turnamen->mahjong_is_final ?? false),
+                        ],
+                        'type' => 'mahjong_team',
+                        'teams' => $teams,
+                        'sections' => [],
+                        'overall' => [],
+                        'recap' => [],
+                        'babak_numbers' => [],
+                        'ranking_note' => 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.',
+                    ],
+                    'error' => null,
+                ];
+            }
+
             $babakNumbers = self::mahjongGrupQuery($connection, $id, $idKategori)
                 ->distinct()
                 ->orderByDesc('babak')
@@ -1063,6 +1087,71 @@ class BornpadelMahjongTournaments
         }
 
         return $recap;
+    }
+
+    /**
+     * Team standings for Mahjong Tim: active teams ranked by sum of poin_didapat.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function buildMahjongTeamStandings($connection, int $turnamenId, $idKategori = null): array
+    {
+        $teams = self::mahjongGrupQuery($connection, $turnamenId, $idKategori)
+            ->where('is_aktif', true)
+            ->orderBy('nama')
+            ->orderBy('id')
+            ->get();
+
+        $rows = [];
+
+        foreach ($teams as $tim) {
+            $members = $connection->table('grup_member')
+                ->where('id_grup', $tim->id)
+                ->orderByDesc('poin_didapat')
+                ->orderBy('id')
+                ->get();
+
+            $mappedMembers = [];
+            $total = 0;
+
+            foreach ($members as $member) {
+                $poin = (int) ($member->poin_didapat ?? 0);
+                $total += $poin;
+                $mappedMembers[] = [
+                    'id' => (int) $member->id,
+                    'id_pemain' => ! empty($member->id_pemain) ? (int) $member->id_pemain : null,
+                    'nama' => self::resolveMemberDisplayName($connection, $member),
+                    'poin_didapat' => $poin,
+                ];
+            }
+
+            usort($mappedMembers, static function (array $a, array $b) {
+                $cmp = ((int) $b['poin_didapat']) <=> ((int) $a['poin_didapat']);
+
+                return $cmp !== 0 ? $cmp : ((int) ($a['id'] ?? 0)) <=> ((int) ($b['id'] ?? 0));
+            });
+
+            $rows[] = [
+                'id' => (int) $tim->id,
+                'id_tim' => (int) $tim->id,
+                'nama' => $tim->nama,
+                'total_poin' => $total,
+                'members' => $mappedMembers,
+            ];
+        }
+
+        usort($rows, static function (array $a, array $b) {
+            $cmp = ((int) $b['total_poin']) <=> ((int) $a['total_poin']);
+
+            return $cmp !== 0 ? $cmp : ((int) ($a['id_tim'] ?? 0)) <=> ((int) ($b['id_tim'] ?? 0));
+        });
+
+        foreach ($rows as $index => &$row) {
+            $row['rank'] = $index + 1;
+        }
+        unset($row);
+
+        return array_values($rows);
     }
 
     /**
@@ -2075,20 +2164,26 @@ class BornpadelMahjongTournaments
             }
 
             $storedPath = self::storePaymentReceiptFile($file);
-            $updates = [
-                'bukti_bayar' => $storedPath,
-                'updated_at' => now(),
-            ];
-
-            if (in_array($peserta->status, ['unpaid', 'pending'], true)) {
-                $updates['status'] = 'paid';
-            }
+            $pesertaIds = self::pesertaIdsSharingReceipt($connection, $peserta);
+            $now = now();
 
             $connection->table('turnamen_peserta')
-                ->where('id', $peserta->id)
-                ->update($updates);
+                ->whereIn('id', $pesertaIds)
+                ->update([
+                    'bukti_bayar' => $storedPath,
+                    'updated_at' => $now,
+                ]);
 
-            $status = $updates['status'] ?? $peserta->status;
+            $connection->table('turnamen_peserta')
+                ->whereIn('id', $pesertaIds)
+                ->whereIn('status', ['unpaid', 'pending'])
+                ->update([
+                    'status' => 'paid',
+                    'updated_at' => $now,
+                ]);
+
+            $fresh = $connection->table('turnamen_peserta')->where('id', $peserta->id)->first();
+            $status = $fresh->status ?? $peserta->status;
 
             return [
                 'data' => [
@@ -2163,6 +2258,32 @@ class BornpadelMahjongTournaments
                 'error' => 'Tidak dapat terhubung ke server turnamen.',
             ];
         }
+    }
+
+    /**
+     * Peserta IDs that should share one payment receipt (the player plus teammates).
+     *
+     * @param  \Illuminate\Database\Connection  $connection
+     * @param  object  $peserta
+     * @return array<int, int>
+     */
+    private static function pesertaIdsSharingReceipt($connection, $peserta): array
+    {
+        $ids = [(int) $peserta->id];
+        $group = self::grupPendaftaranForPeserta($connection, (int) $peserta->id);
+        if (! $group || empty($group['members']) || ! is_array($group['members'])) {
+            return $ids;
+        }
+
+        foreach ($group['members'] as $member) {
+            if (! empty($member['peserta_id'])) {
+                $ids[] = (int) $member['peserta_id'];
+            }
+        }
+
+        $ids = array_values(array_unique(array_filter($ids)));
+
+        return $ids !== [] ? $ids : [(int) $peserta->id];
     }
 
     /**
@@ -3270,8 +3391,22 @@ class BornpadelMahjongTournaments
                 ->get($apiUrl.'/tournaments/'.$id.'/group-standings');
 
             if ($response->successful() && $response->json('success') === true) {
+                $data = $response->json('data');
+                $data = is_array($data) ? $data : [];
+
+                if ((($data['turnamen']['jenis'] ?? null) === 'mahjong_team')
+                    && empty($data['teams'])
+                    && isset($data['groups'])
+                    && is_array($data['groups'])) {
+                    $data['type'] = 'mahjong_team';
+                    $data['teams'] = $data['groups'];
+                    $data['sections'] = $data['sections'] ?? [];
+                    $data['ranking_note'] = $data['ranking_note']
+                        ?? 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.';
+                }
+
                 return [
-                    'data' => $response->json('data'),
+                    'data' => $data,
                     'error' => null,
                 ];
             }

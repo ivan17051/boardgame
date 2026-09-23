@@ -34,6 +34,28 @@
   @endif
 
   <div class="mb-3">
+    <label for="{{ $fotoId }}" class="form-label fw-semibold">
+      Profile Picture <span class="text-muted fw-normal">(opsional)</span>
+    </label>
+    <input
+      type="file"
+      name="{{ $fotoName }}"
+      id="{{ $fotoId }}"
+      class="form-control js-foto-input @error($fotoName) is-invalid @enderror"
+      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+      data-preview="#{{ $previewId }}"
+      data-preview-img="#{{ $previewImgId }}"
+    />
+    <div class="form-text">Format JPG, PNG, atau WebP. Maks. 5 MB.</div>
+    @error($fotoName)
+      <div class="invalid-feedback">{{ $message }}</div>
+    @enderror
+    <div class="foto-preview" id="{{ $previewId }}">
+      <img src="" alt="Pratinjau foto pemain {{ $n }}" id="{{ $previewImgId }}" />
+    </div>
+  </div>
+
+  <div class="mb-3">
     <label class="form-label fw-semibold">Nomor HP</label>
     <input type="text" class="form-control bg-light" value="{{ $phoneValue }}" readonly />
     <input type="hidden" name="{{ $fieldName('no_hp') }}" value="{{ $phoneValue }}" />
@@ -88,27 +110,5 @@
     @error($dotKey('tgl_lahir'))
       <div class="invalid-feedback">{{ $message }}</div>
     @enderror
-  </div>
-
-  <div class="mb-0">
-    <label for="{{ $fotoId }}" class="form-label fw-semibold">
-      Profile Picture <span class="text-muted fw-normal">(opsional)</span>
-    </label>
-    <input
-      type="file"
-      name="{{ $fotoName }}"
-      id="{{ $fotoId }}"
-      class="form-control js-foto-input @error($fotoName) is-invalid @enderror"
-      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-      data-preview="#{{ $previewId }}"
-      data-preview-img="#{{ $previewImgId }}"
-    />
-    <div class="form-text">Format JPG, PNG, atau WebP. Maks. 5 MB.</div>
-    @error($fotoName)
-      <div class="invalid-feedback">{{ $message }}</div>
-    @enderror
-    <div class="foto-preview" id="{{ $previewId }}">
-      <img src="" alt="Pratinjau foto pemain {{ $n }}" id="{{ $previewImgId }}" />
-    </div>
   </div>
 </div>
