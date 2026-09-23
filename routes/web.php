@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GuestRentalController;
 use App\Http\Controllers\GuestRentalMahjongScoreController;
 use App\Http\Controllers\ManualRentalController;
+use App\Http\Controllers\MejaBookingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RentalController;
 use App\Http\Controllers\PublicMahjongTournamentController;
@@ -161,6 +162,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/sewa', [RentalController::class, 'index'])->name('rental.index');
     Route::post('/sewa', [RentalController::class, 'store'])->name('rental.store');
+    Route::post('/sewa/bookings', [MejaBookingController::class, 'store'])->name('rental.bookings.store');
+    Route::post('/sewa/bookings/{mejaBooking}/check-in', [MejaBookingController::class, 'checkIn'])->name('rental.bookings.check-in');
+    Route::post('/sewa/bookings/{mejaBooking}/cancel', [MejaBookingController::class, 'cancel'])->name('rental.bookings.cancel');
+    Route::post('/sewa/bookings/{mejaBooking}/no-show', [MejaBookingController::class, 'noShow'])->name('rental.bookings.no-show');
     Route::get('/sewa/manual', [ManualRentalController::class, 'index'])->name('rental.manual.index');
     Route::post('/sewa/manual', [ManualRentalController::class, 'store'])->name('rental.manual.store');
     Route::post('/additional-items/quick', [AdditionalItemController::class, 'quickStore'])

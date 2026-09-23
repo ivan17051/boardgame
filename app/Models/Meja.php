@@ -44,6 +44,8 @@ class Meja extends Model
                 ->where('id_meja', $meja->id)
                 ->get()
                 ->each->delete();
+
+            MejaBooking::query()->where('id_meja', $meja->id)->delete();
         });
     }
 
@@ -60,5 +62,18 @@ class Meja extends Model
     public function activeRental(): HasOne
     {
         return $this->hasOne(Rental::class, 'id_meja')->where('status', 'active');
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(MejaBooking::class, 'id_meja');
+    }
+
+    public function upcomingBookings(): HasMany
+    {
+        return $this->hasMany(MejaBooking::class, 'id_meja')
+            ->where('status', MejaBooking::STATUS_BOOKED)
+            ->where('waktu_selesai', '>', now())
+            ->orderBy('waktu_mulai');
     }
 }

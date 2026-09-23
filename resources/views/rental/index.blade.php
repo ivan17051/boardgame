@@ -8,8 +8,13 @@
 <div class="app-content-header">
   <div class="container-fluid">
     <div class="row">
-      <div class="col-sm-6">
+      <div class="col-sm-6 d-flex align-items-center gap-2">
         <h3 class="mb-0">Sewa Meja</h3>
+        @if (!empty($hasMejaBookingTable))
+          <button type="button" class="btn btn-sm btn-outline-primary" id="openBookingModalBtn">
+            <i class="bi bi-calendar-plus me-1"></i>Booking meja
+          </button>
+        @endif
       </div>
       <div class="col-sm-6">
         <ol class="breadcrumb float-sm-end">
@@ -23,8 +28,100 @@
 
 <div class="app-content">
   <div class="container-fluid">
-    
-    @php $totalMeja = $tokos->sum(fn ($t) => $t->meja->count()); @endphp
+    @php
+      $hasMejaBookingTable = !empty($hasMejaBookingTable);
+      $upcomingBookings = $upcomingBookings ?? collect();
+      $soonBookings = $soonBookings ?? collect();
+      $totalMeja = $tokos->sum(fn ($t) => $t->meja->count());
+    @endphp
+
+    @if ($hasMejaBookingTable && $soonBookings->isNotEmpty())
+      <div class="alert alert-warning d-flex align-items-start gap-2" id="bookingWarnBanner" role="alert">
+        <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+        <div>
+          <strong>Booking segera dimulai</strong>
+          <ul class="mb-0 ps-3">
+            @foreach ($soonBookings as $soon)
+              <li>
+                {{ optional($soon->meja)->nama ?? 'Meja' }}
+                · {{ $soon->nama_customer }}
+                · {{ $soon->waktu_mulai->format('H:i') }}–{{ $soon->waktu_selesai->format('H:i') }}
+                @if ($soon->isInBookedWindow())
+                  (berlangsung)
+                @else
+                  ({{ $soon->minutesUntilStart() }} mnt lagi)
+                @endif
+              </li>
+            @endforeach
+          </ul>
+        </div>
+      </div>
+    @endif
+
+    @if ($hasMejaBookingTable)
+      <div class="card mb-4">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 fs-6">Booking aktif</h5>
+          <span class="small text-secondary">{{ $upcomingBookings->count() }} jadwal</span>
+        </div>
+        <div class="card-body p-0">
+          @if ($upcomingBookings->isEmpty())
+            <p class="small text-secondary mb-0 p-3">Belum ada booking. Gunakan <strong>Booking meja</strong> untuk reservasi kasir.</p>
+          @else
+            <div class="table-responsive">
+              <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Meja</th>
+                    <th>Customer</th>
+                    <th>Waktu</th>
+                    <th class="text-end">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach ($upcomingBookings as $booking)
+                    @php $bp = $booking->warningPayload(); @endphp
+                    <tr class="{{ $booking->isWarningSoon() || $booking->isInBookedWindow() ? 'table-warning' : '' }}">
+                      <td>
+                        {{ optional($booking->meja)->nama ?? 'Meja' }}
+                        @if (optional($booking->meja)->toko)
+                          <div class="small text-secondary">{{ $booking->meja->toko->nama }}</div>
+                        @endif
+                      </td>
+                      <td>
+                        {{ $booking->nama_customer }}
+                        @if ($booking->no_hp)
+                          <div class="small text-secondary">{{ $booking->no_hp }}</div>
+                        @endif
+                      </td>
+                      <td class="font-monospace small">
+                        {{ $booking->waktu_mulai->format('d/m H:i') }}–{{ $booking->waktu_selesai->format('H:i') }}
+                      </td>
+                      <td class="text-end text-nowrap">
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-success booking-checkin-btn"
+                          data-booking-id="{{ $booking->id }}"
+                          data-meja-id="{{ $booking->id_meja }}"
+                          data-meja-nama="{{ optional($booking->meja)->nama }}"
+                          data-toko-id="{{ (int) optional($booking->meja)->id_toko }}"
+                          data-harga-non-member="{{ (float) optional($booking->meja)->harga }}"
+                          data-harga-member="{{ (float) (optional($booking->meja)->harga_member ?? optional($booking->meja)->harga) }}"
+                          data-customer="{{ $booking->nama_customer }}"
+                          data-booking-blocked="{{ $bp['is_blocked'] ? '1' : '0' }}"
+                        >Check-in</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary booking-cancel-btn" data-booking-id="{{ $booking->id }}">Batal</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger booking-noshow-btn" data-booking-id="{{ $booking->id }}">No-show</button>
+                      </td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+          @endif
+        </div>
+      </div>
+    @endif
 
     @if ($totalMeja === 0)
       <div class="alert alert-secondary">Belum ada meja. Tambah data di menu <strong>Toko</strong>.</div>
@@ -44,11 +141,16 @@
                   $fbFlow = $rental->cashFlows->firstWhere('kategori_pendapatan', \App\Models\CashFlow::KATEGORI_ADDITIONAL_FB);
                   $fbPaid = $fbFlow && ! empty($fbFlow->metode_pembayaran);
                 }
+                $nextBooking = ($hasMejaBookingTable && $meja->relationLoaded('upcomingBookings'))
+                  ? $meja->upcomingBookings->first()
+                  : null;
+                $bookingBlocked = $nextBooking && $nextBooking->isHardBlockedForWalkIn();
+                $bookingSoon = $nextBooking && ! $bookingBlocked;
               @endphp
               <div class="col-6 col-md-3">
                 <button
                   type="button"
-                  class="btn w-100 h-100 p-0 border-0 text-start meja-card {{ $occupied ? 'meja-card--occupied' : 'meja-card--available' }}"
+                  class="btn w-100 h-100 p-0 border-0 text-start meja-card {{ $occupied ? 'meja-card--occupied' : 'meja-card--available' }}{{ $bookingSoon ? ' meja-card--booking-soon' : '' }}{{ $bookingBlocked ? ' meja-card--booking-blocked' : '' }}"
                   data-meja-id="{{ $meja->id }}"
                   data-meja-nama="{{ $meja->nama }}"
                   data-toko-nama="{{ $toko->nama }}"
@@ -63,6 +165,13 @@
                     data-items-count="{{ (int) $savedItemsCount }}"
                     data-items-total="{{ $savedItemsTotal }}"
                     data-items-paid="{{ $fbPaid ? '1' : '0' }}"
+                  @endif
+                  @if ($nextBooking)
+                    data-booking-id="{{ $nextBooking->id }}"
+                    data-booking-customer="{{ $nextBooking->nama_customer }}"
+                    data-booking-start-epoch="{{ $nextBooking->waktu_mulai->timestamp }}"
+                    data-booking-end-epoch="{{ $nextBooking->waktu_selesai->timestamp }}"
+                    data-booking-label="{{ $nextBooking->waktu_mulai->format('H:i') }}–{{ $nextBooking->waktu_selesai->format('H:i') }}"
                   @endif
                 >
                   <div class="card h-100 shadow-sm mb-0">
@@ -91,6 +200,13 @@
                         <div class="small text-secondary">Member: {{ $fmtRp($meja->harga_member ?? $meja->harga) }}/jam</div>
                         <div class="small text-success mt-2">Ketuk untuk check-in</div>
                       @endif
+                      @if ($nextBooking)
+                        <div class="small mt-2 meja-booking-info">
+                          <span class="badge text-bg-warning text-dark meja-booking-countdown">
+                            Booking {{ $nextBooking->nama_customer }} {{ $nextBooking->waktu_mulai->format('H:i') }}
+                          </span>
+                        </div>
+                      @endif
                     </div>
                   </div>
                 </button>
@@ -113,6 +229,7 @@
       </div>
       <div class="modal-body d-grid gap-2">
         <p class="small text-secondary mb-1" id="occupiedActionCustomer"></p>
+        <div id="occupiedActionBookingWarn" class="alert alert-warning py-2 small d-none mb-2"></div>
         <button type="button" class="btn btn-outline-success" id="occupiedActionScoreBtn">
           <i class="bi bi-trophy me-1"></i>Link skor mahjong
         </button>
@@ -270,7 +387,9 @@
       <form id="checkinForm" novalidate data-no-page-loader>
         <div class="modal-body">
           <div id="checkinAlert" class="alert alert-danger d-none"></div>
+          <div id="checkinBookingWarn" class="alert alert-warning d-none py-2"></div>
           <input type="hidden" id="checkin_id_meja" name="id_meja" />
+          <input type="hidden" id="checkin_booking_id" name="booking_id" value="" />
           <div class="mb-3">
             <label class="form-label d-block">Tipe customer</label>
             <div class="btn-group w-100" role="group">
@@ -309,7 +428,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
-          <button type="submit" class="btn btn-success">Mulai sewa</button>
+          <button type="submit" class="btn btn-success" id="checkinSubmitBtn">Mulai sewa</button>
         </div>
       </form>
     </div>
@@ -455,6 +574,65 @@
     </div>
   </div>
 </div>
+
+@if ($hasMejaBookingTable)
+<div class="modal fade" id="bookingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Booking meja</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+      </div>
+      <form id="bookingForm" novalidate data-no-page-loader>
+        <div class="modal-body">
+          <div id="bookingAlert" class="alert alert-danger d-none"></div>
+          <div class="mb-3">
+            <label for="booking_id_meja" class="form-label">Meja</label>
+            <select class="form-select" id="booking_id_meja" name="id_meja" required>
+              <option value="">— Pilih meja —</option>
+              @foreach ($tokos as $toko)
+                @foreach ($toko->meja as $m)
+                  <option value="{{ $m->id }}">{{ $toko->nama }} — {{ $m->nama }}</option>
+                @endforeach
+              @endforeach
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="booking_nama_customer" class="form-label">Nama customer</label>
+            <input type="text" class="form-control" id="booking_nama_customer" name="nama_customer" required maxlength="255" autocomplete="name" />
+          </div>
+          <div class="mb-3">
+            <label for="booking_no_hp" class="form-label">No. HP <span class="text-secondary">(opsional)</span></label>
+            <input type="text" class="form-control" id="booking_no_hp" name="no_hp" maxlength="30" autocomplete="tel" />
+          </div>
+          <div class="row g-2">
+            <div class="col-7">
+              <label for="booking_waktu_mulai" class="form-label">Mulai</label>
+              <input type="datetime-local" class="form-control" id="booking_waktu_mulai" name="waktu_mulai" required />
+            </div>
+            <div class="col-5">
+              <label for="booking_durasi_jam" class="form-label">Durasi</label>
+              <select class="form-select" id="booking_durasi_jam" name="durasi_jam" required>
+                @for ($h = 1; $h <= 8; $h++)
+                  <option value="{{ $h }}" @if ($h === 2) selected @endif>{{ $h }} jam</option>
+                @endfor
+              </select>
+            </div>
+          </div>
+          <div class="mb-0 mt-3">
+            <label for="booking_catatan" class="form-label">Catatan <span class="text-secondary">(opsional)</span></label>
+            <input type="text" class="form-control" id="booking_catatan" name="catatan" maxlength="255" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan booking</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+@endif
 @endsection
 
 @push('styles')
@@ -466,6 +644,8 @@
   .meja-card--occupied:hover .card { transform: translateY(-2px); box-shadow: 0 0.5rem 1rem rgba(253, 126, 20, 0.2); }
   .meja-card--available:focus-visible .card,
   .meja-card--occupied:focus-visible .card { box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.4); outline: none; }
+  .meja-card--booking-soon .card { border-color: #ffc107; box-shadow: 0 0 0 0.15rem rgba(255, 193, 7, 0.45); }
+  .meja-card--booking-blocked .card { border-color: #dc3545; box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.35); }
   tr.item-toko-hidden,
   tr.item-page-hidden { display: none !important; }
 </style>
@@ -499,6 +679,10 @@
     itemsPay: (id) => @json(url('/sewa')) + '/' + id + '/items/pay',
     scoreLink: (id) => @json(url('/sewa')) + '/' + id + '/skor-link',
     quickAddItem: @json(route('additional-items.quick-store')),
+    bookingStore: @json(route('rental.bookings.store')),
+    bookingCheckIn: (id) => @json(url('/sewa/bookings')) + '/' + id + '/check-in',
+    bookingCancel: (id) => @json(url('/sewa/bookings')) + '/' + id + '/cancel',
+    bookingNoShow: (id) => @json(url('/sewa/bookings')) + '/' + id + '/no-show',
   };
 
   const checkinModalEl = document.getElementById('checkinModal');
@@ -511,6 +695,8 @@
   const itemsModal = itemsModalEl ? new bootstrap.Modal(itemsModalEl) : null;
   const scoreLinkModalEl = document.getElementById('scoreLinkModal');
   const scoreLinkModal = scoreLinkModalEl ? new bootstrap.Modal(scoreLinkModalEl) : null;
+  const bookingModalEl = document.getElementById('bookingModal');
+  const bookingModal = bookingModalEl ? new bootstrap.Modal(bookingModalEl) : null;
 
   let checkinMeja = null;
   let checkoutRentalId = null;
@@ -574,6 +760,27 @@
       const start = parseInt(btn.getAttribute('data-start-epoch'), 10);
       const el = btn.querySelector('.meja-timer');
       if (el && !Number.isNaN(start)) el.textContent = formatHMS(nowSec - start);
+    });
+    document.querySelectorAll('.meja-card[data-booking-start-epoch]').forEach(function (btn) {
+      const start = parseInt(btn.getAttribute('data-booking-start-epoch'), 10);
+      const end = parseInt(btn.getAttribute('data-booking-end-epoch'), 10);
+      if (Number.isNaN(start)) return;
+      const minutesUntil = Math.round((start - nowSec) / 60);
+      const inWindow = !Number.isNaN(end) && nowSec >= start && nowSec < end;
+      const blocked = inWindow || (minutesUntil >= 0 && minutesUntil <= 30);
+      btn.classList.toggle('meja-card--booking-soon', !blocked && minutesUntil > 30);
+      btn.classList.toggle('meja-card--booking-blocked', blocked);
+      const badge = btn.querySelector('.meja-booking-countdown');
+      if (!badge) return;
+      const customer = btn.getAttribute('data-booking-customer') || 'tamu';
+      const label = btn.getAttribute('data-booking-label') || '';
+      if (inWindow) {
+        badge.textContent = 'Booking ' + customer + ' berlangsung';
+      } else if (minutesUntil >= 0 && minutesUntil <= 30) {
+        badge.textContent = 'Booking ' + customer + ' ' + minutesUntil + ' mnt lagi';
+      } else {
+        badge.textContent = 'Booking ' + customer + (label ? ' ' + label : '');
+      }
     });
   }
   tickTimers();
@@ -647,6 +854,18 @@
     occupiedBtn = btn;
     document.getElementById('occupiedActionMejaLabel').textContent = btn.getAttribute('data-meja-nama') || '';
     document.getElementById('occupiedActionCustomer').textContent = btn.getAttribute('data-customer') || '';
+    const bookingWarn = document.getElementById('occupiedActionBookingWarn');
+    if (bookingWarn) {
+      const bookingCustomer = btn.getAttribute('data-booking-customer');
+      const bookingLabel = btn.getAttribute('data-booking-label');
+      if (bookingCustomer) {
+        bookingWarn.textContent = 'Booking berikutnya: ' + bookingCustomer + (bookingLabel ? ' pukul ' + bookingLabel : '') + '. Checkout sebelum jam tersebut agar tamu booking bisa check-in.';
+        bookingWarn.classList.remove('d-none');
+      } else {
+        bookingWarn.textContent = '';
+        bookingWarn.classList.add('d-none');
+      }
+    }
     occupiedActionModal?.show();
   }
 
@@ -998,7 +1217,8 @@
     }
   }
 
-  function openCheckin(btn) {
+  function openCheckin(btn, opts) {
+    opts = opts || {};
     checkinMeja = {
       id: btn.getAttribute('data-meja-id'),
       nama: btn.getAttribute('data-meja-nama'),
@@ -1008,11 +1228,43 @@
     };
     document.getElementById('checkinMejaLabel').textContent = checkinMeja.nama;
     document.getElementById('checkin_id_meja').value = checkinMeja.id;
-    document.getElementById('checkin_nama_customer').value = '';
     document.getElementById('tipe_non_member').checked = true;
     const promoSel = document.getElementById('checkin_id_promo');
     if (promoSel) promoSel.value = '';
     document.getElementById('checkinAlert')?.classList.add('d-none');
+    const bookingIdEl = document.getElementById('checkin_booking_id');
+    const warnEl = document.getElementById('checkinBookingWarn');
+    const submitBtn = document.getElementById('checkinSubmitBtn');
+    if (opts.bookingId) {
+      if (bookingIdEl) bookingIdEl.value = String(opts.bookingId);
+      document.getElementById('checkin_nama_customer').value = opts.customer || btn.getAttribute('data-customer') || '';
+      if (submitBtn) submitBtn.textContent = 'Check-in booking';
+      if (warnEl) warnEl.classList.add('d-none');
+    } else {
+      if (bookingIdEl) bookingIdEl.value = '';
+      document.getElementById('checkin_nama_customer').value = '';
+      if (submitBtn) submitBtn.textContent = 'Mulai sewa';
+      const bookingCustomer = btn.getAttribute('data-booking-customer');
+      const bookingLabel = btn.getAttribute('data-booking-label');
+      const start = parseInt(btn.getAttribute('data-booking-start-epoch') || '', 10);
+      const end = parseInt(btn.getAttribute('data-booking-end-epoch') || '', 10);
+      if (bookingCustomer && warnEl) {
+        const nowSec = Math.floor(Date.now() / 1000);
+        const minutesUntil = Number.isNaN(start) ? null : Math.round((start - nowSec) / 60);
+        let text = 'Ada booking ' + bookingCustomer + (bookingLabel ? ' pukul ' + bookingLabel : '') + '.';
+        if (!Number.isNaN(end) && nowSec >= start && nowSec < end) {
+          text += ' Jendela booking sedang berlangsung. Walk-in diblokir — gunakan Check-in di daftar booking.';
+        } else if (minutesUntil !== null && minutesUntil <= 30 && minutesUntil >= 0) {
+          text += ' Walk-in diblokir karena mulai dalam ' + minutesUntil + ' menit. Gunakan Check-in di daftar booking.';
+        } else {
+          text += ' Walk-in harus di-checkout sebelum jam booking.';
+        }
+        warnEl.textContent = text;
+        warnEl.classList.remove('d-none');
+      } else if (warnEl) {
+        warnEl.classList.add('d-none');
+      }
+    }
     updateCheckinRateHint();
     checkinModal?.show();
   }
@@ -1166,8 +1418,25 @@
     previewTimer = setTimeout(refreshCheckoutPreview, 400);
   });
 
-  document.getElementById('checkinForm')?.addEventListener('submit', function (e) {
-    e.preventDefault();
+  function confirmWalkInBooking(message, onConfirm) {
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: 'Meja ada booking',
+        text: message,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, lanjutkan. Saya akan checkout sebelum jam booking',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#fd7e14',
+      }).then(function (result) {
+        if (result.isConfirmed) onConfirm();
+      });
+      return;
+    }
+    if (window.confirm(message)) onConfirm();
+  }
+
+  function submitCheckin(confirmUpcoming) {
     const tipe = document.querySelector('input[name="tipe_customer"]:checked')?.value || 'non_member';
     const payload = {
       id_meja: document.getElementById('checkin_id_meja').value,
@@ -1176,7 +1445,10 @@
     };
     const idPromo = document.getElementById('checkin_id_promo')?.value;
     if (idPromo) payload.id_promo = parseInt(idPromo, 10);
-    fetch(routes.store, {
+    const bookingId = document.getElementById('checkin_booking_id')?.value;
+    if (!bookingId && confirmUpcoming) payload.confirm_upcoming_booking = true;
+    const url = bookingId ? routes.bookingCheckIn(bookingId) : routes.store;
+    fetch(url, {
       method: 'POST',
       headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -1188,6 +1460,12 @@
           window.location.reload();
           return;
         }
+        if (r.status === 409 && r.body?.needs_confirmation) {
+          confirmWalkInBooking(r.body.message || 'Ada booking di meja ini. Lanjutkan walk-in?', function () {
+            submitCheckin(true);
+          });
+          return;
+        }
         const msg = r.status === 422 && r.body?.errors
           ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
           : (r.body?.message || 'Gagal.');
@@ -1196,6 +1474,11 @@
         AppToast.show(msg, 'danger');
       })
       .catch(function () { AppToast.show('Jaringan bermasalah.', 'danger'); });
+  }
+
+  document.getElementById('checkinForm')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+    submitCheckin(false);
   });
 
   checkoutJumlahBayarEl?.addEventListener('input', function () {
@@ -1468,6 +1751,114 @@
         btn.disabled = false;
         showQuickAddAlert('Jaringan bermasalah.');
       });
+  });
+
+  function nextHalfHourLocalValue() {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    const m = d.getMinutes();
+    const add = m === 0 ? 30 : (m <= 30 ? 30 - m : 60 - m);
+    d.setMinutes(d.getMinutes() + add);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+
+  document.getElementById('openBookingModalBtn')?.addEventListener('click', function () {
+    const alert = document.getElementById('bookingAlert');
+    if (alert) alert.classList.add('d-none');
+    const startEl = document.getElementById('booking_waktu_mulai');
+    if (startEl) startEl.value = nextHalfHourLocalValue();
+    bookingModal?.show();
+  });
+
+  document.getElementById('bookingForm')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const alert = document.getElementById('bookingAlert');
+    if (alert) alert.classList.add('d-none');
+    const payload = {
+      id_meja: document.getElementById('booking_id_meja').value,
+      nama_customer: document.getElementById('booking_nama_customer').value.trim(),
+      no_hp: document.getElementById('booking_no_hp').value.trim() || null,
+      waktu_mulai: document.getElementById('booking_waktu_mulai').value,
+      durasi_jam: parseInt(document.getElementById('booking_durasi_jam').value, 10),
+      catatan: document.getElementById('booking_catatan').value.trim() || null,
+    };
+    fetch(routes.bookingStore, {
+      method: 'POST',
+      headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+      .then(function (r) {
+        if (r.ok) {
+          AppToast.saveForReload(r.body?.message || 'Booking disimpan.');
+          window.location.reload();
+          return;
+        }
+        const msg = r.status === 422 && r.body?.errors
+          ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+          : (r.body?.message || 'Gagal menyimpan booking.');
+        if (alert) { alert.textContent = msg; alert.classList.remove('d-none'); }
+        AppToast.show(msg, 'danger');
+      })
+      .catch(function () { AppToast.show('Jaringan bermasalah.', 'danger'); });
+  });
+
+  document.querySelectorAll('.booking-checkin-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openCheckin(btn, {
+        bookingId: btn.getAttribute('data-booking-id'),
+        customer: btn.getAttribute('data-customer'),
+      });
+    });
+  });
+
+  function confirmBookingAction(title, text, url, successFallback) {
+    const run = function () {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+        .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
+        .then(function (r) {
+          if (r.ok) {
+            AppToast.saveForReload(r.body?.message || successFallback);
+            window.location.reload();
+            return;
+          }
+          const msg = r.status === 422 && r.body?.errors
+            ? (Object.values(r.body.errors)[0]?.[0] || 'Validasi gagal.')
+            : (r.body?.message || 'Gagal.');
+          AppToast.show(msg, 'danger');
+        })
+        .catch(function () { AppToast.show('Jaringan bermasalah.', 'danger'); });
+    };
+    if (typeof Swal !== 'undefined') {
+      Swal.fire({
+        title: title,
+        text: text,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#dc3545',
+      }).then(function (result) {
+        if (result.isConfirmed) run();
+      });
+      return;
+    }
+    if (window.confirm(text)) run();
+  }
+
+  document.querySelectorAll('.booking-cancel-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      confirmBookingAction('Batalkan booking?', 'Booking akan dibatalkan dan slot meja dibuka lagi.', routes.bookingCancel(btn.getAttribute('data-booking-id')), 'Booking dibatalkan.');
+    });
+  });
+  document.querySelectorAll('.booking-noshow-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      confirmBookingAction('Tandai no-show?', 'Tamu dianggap tidak datang. Slot meja dibuka lagi.', routes.bookingNoShow(btn.getAttribute('data-booking-id')), 'Booking ditandai no-show.');
+    });
   });
 })();
 </script>

@@ -6,6 +6,7 @@ use App\Models\AdditionalItem;
 use App\Models\RentalPromo;
 use App\Models\CashFlow;
 use App\Models\Meja;
+use App\Models\MejaBooking;
 use App\Models\Rental;
 use App\Models\Toko;
 use App\Models\User;
@@ -199,5 +200,26 @@ class TokoScope
         if ((int) $promo->id_toko !== self::userIdToko()) {
             abort(403);
         }
+    }
+
+    public static function scopeMejaBookings(Builder $query): Builder
+    {
+        if (self::canSeeAll()) {
+            return $query;
+        }
+
+        return $query->whereHas('meja', function (Builder $q) {
+            $q->where('id_toko', self::userIdToko());
+        });
+    }
+
+    public static function authorizeMejaBooking(MejaBooking $booking): void
+    {
+        $booking->loadMissing('meja');
+        if (! $booking->meja) {
+            abort(404);
+        }
+
+        self::authorizeMeja($booking->meja);
     }
 }

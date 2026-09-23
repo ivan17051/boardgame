@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\AdditionalItem;
 use App\Models\CashFlow;
 use App\Models\Meja;
+use App\Models\MejaBooking;
 use App\Models\Rental;
 use App\Models\RentalAdditionalItem;
 use App\Models\RentalPromo;
 use App\Models\Toko;
+use App\Support\MejaBookingSchedule;
+use App\Support\RentalCheckin;
 use App\Support\RentalCheckout;
 use App\Support\RentalInvoice;
 use App\Support\RentalMahjongScoring;
@@ -19,7 +22,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -27,17 +29,39 @@ class RentalController extends Controller
 {
     public function index()
     {
+        $hasMejaBookingTable = Schema::hasTable('meja_booking');
+        $mejaRelations = [
+            'activeRental.additionalItems',
+            'activeRental.cashFlows',
+        ];
+        if ($hasMejaBookingTable) {
+            $mejaRelations[] = 'upcomingBookings';
+        }
+
         $tokos = TokoScope::scopeTokos(Toko::query())
             ->with([
-                'meja' => function ($q) {
-                    $q->orderBy('nama')->with([
-                        'activeRental.additionalItems',
-                        'activeRental.cashFlows',
-                    ]);
+                'meja' => function ($q) use ($mejaRelations) {
+                    $q->orderBy('nama')->with($mejaRelations);
                 },
             ])
             ->orderBy('nama')
             ->get();
+
+        $upcomingBookings = collect();
+        $soonBookings = collect();
+        if ($hasMejaBookingTable) {
+            $upcomingBookings = TokoScope::scopeMejaBookings(MejaBooking::query())
+                ->with(['meja.toko'])
+                ->booked()
+                ->where('waktu_selesai', '>', now())
+                ->orderBy('waktu_mulai')
+                ->limit(50)
+                ->get();
+
+            $soonBookings = $upcomingBookings->filter(function (MejaBooking $booking) {
+                return $booking->isWarningSoon() || $booking->isInBookedWindow();
+            })->values();
+        }
 
         $additionalItems = collect();
         if (Schema::hasTable('m_additional_item')) {
@@ -58,7 +82,14 @@ class RentalController extends Controller
                 ->get(['id', 'id_toko', 'nama', 'promo_hourly_rate', 'promo_duration_limit', 'jam_mulai', 'jam_selesai', 'tgl_awal', 'tgl_akhir']);
         }
 
-        return view('rental.index', compact('tokos', 'additionalItems', 'rentalPromos'));
+        return view('rental.index', compact(
+            'tokos',
+            'additionalItems',
+            'rentalPromos',
+            'hasMejaBookingTable',
+            'upcomingBookings',
+            'soonBookings'
+        ));
     }
 
     public function invoice(Rental $rental)
@@ -84,6 +115,7 @@ class RentalController extends Controller
                 RentalCheckout::CUSTOMER_NON_MEMBER,
             ])],
             'id_promo' => ['nullable', 'integer'],
+            'confirm_upcoming_booking' => ['sometimes', 'boolean'],
         ]);
 
         $rental = DB::transaction(function () use ($validated) {
@@ -101,28 +133,14 @@ class RentalController extends Controller
 
             TokoScope::authorizeMeja($meja);
 
-            $now = now();
-            $rate = RentalCheckout::rateForMeja($meja, $validated['tipe_customer']);
-            $guestToken = Str::random(48);
+            if (Schema::hasTable('meja_booking')) {
+                MejaBookingSchedule::assertWalkInAllowed(
+                    (int) $meja->id,
+                    ! empty($validated['confirm_upcoming_booking'])
+                );
+            }
 
-            $created = Rental::query()->create(array_merge([
-                'id_meja' => $meja->id,
-                'nama_customer' => $validated['nama_customer'],
-                'tipe_customer' => $validated['tipe_customer'],
-                'waktu_start' => $now,
-                'waktu_end' => null,
-                'total_durasi' => null,
-                'harga' => $rate,
-                'total_harga' => null,
-                'total_harga_sewa' => null,
-                'total_harga_additional' => 0,
-                'status' => 'active',
-                'guest_token' => $guestToken,
-            ], $this->promoFieldsForRental($meja, $validated['id_promo'] ?? null, now())));
-
-            $meja->update(['status' => 'rented']);
-
-            return $created;
+            return RentalCheckin::start($meja, $validated);
         });
 
         $link = RentalMahjongScoring::ensureScoreLink($rental);
@@ -625,45 +643,6 @@ class RentalController extends Controller
             'Content-Type' => $mime,
             'Content-Disposition' => 'inline; filename="'.basename($rental->bukti_transaksi).'"',
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function promoFieldsForRental(Meja $meja, ?int $idPromo, CarbonInterface $at): array
-    {
-        $empty = [
-            'id_promo' => null,
-            'promo_nama' => null,
-            'promo_hourly_rate' => null,
-            'promo_duration_limit' => null,
-            'promo_jam_mulai' => null,
-            'promo_jam_selesai' => null,
-            'promo_tgl_awal' => null,
-            'promo_tgl_akhir' => null,
-        ];
-
-        if (! $idPromo) {
-            return $empty;
-        }
-
-        $snapshot = RentalCheckout::resolvePromoSnapshot($idPromo, (int) $meja->id_toko, $at, false);
-        if (! $snapshot) {
-            throw ValidationException::withMessages([
-                'id_promo' => ['Promo tidak valid, tidak aktif untuk tanggal ini, atau tidak berlaku untuk toko meja ini.'],
-            ]);
-        }
-
-        return [
-            'id_promo' => $snapshot['id_promo'],
-            'promo_nama' => $snapshot['promo_nama'],
-            'promo_hourly_rate' => $snapshot['promo_hourly_rate'],
-            'promo_duration_limit' => $snapshot['promo_duration_limit'],
-            'promo_jam_mulai' => $snapshot['promo_jam_mulai'],
-            'promo_jam_selesai' => $snapshot['promo_jam_selesai'],
-            'promo_tgl_awal' => $snapshot['promo_tgl_awal'] ?: null,
-            'promo_tgl_akhir' => $snapshot['promo_tgl_akhir'] ?: null,
-        ];
     }
 
     /**
