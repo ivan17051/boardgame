@@ -3198,16 +3198,16 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    public static function fetchMahjongGroups(int $id): array
+    public static function fetchMahjongGroups(int $id, $idKategori = null): array
     {
-        $fromDatabase = self::fetchMahjongGroupsFromDatabase($id);
+        $fromDatabase = self::fetchMahjongGroupsFromDatabase($id, $idKategori);
         if ($fromDatabase['error'] === null) {
-            return $fromDatabase;
+            return self::normalizeMahjongGroupsResult($fromDatabase);
         }
 
         $fromApi = self::fetchMahjongGroupsFromApi($id);
         if ($fromApi['error'] === null) {
-            return $fromApi;
+            return self::normalizeMahjongGroupsResult($fromApi);
         }
 
         return [
@@ -3236,7 +3236,7 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    private static function fetchMahjongGroupsFromDatabase(int $id): array
+    private static function fetchMahjongGroupsFromDatabase(int $id, $idKategori = null): array
     {
         try {
             $connection = DB::connection('bornpadel');
@@ -3262,26 +3262,103 @@ class BornpadelMahjongTournaments
                 ];
             }
 
-            $groupRows = $connection->table('grup')
-                ->where('id_turnamen', $id)
-                ->where('is_aktif', true)
-                ->orderBy('nama')
-                ->orderBy('id')
-                ->get();
+            $kategoriId = $idKategori !== null && $idKategori !== ''
+                ? (int) $idKategori
+                : null;
+            $isMahjongTeam = ($turnamen->jenis ?? '') === 'mahjong_team';
+            $useMeja = $isMahjongTeam
+                && Schema::connection('bornpadel')->hasTable('turnamen_meja')
+                && Schema::connection('bornpadel')->hasTable('turnamen_meja_seat');
 
-            if ($groupRows->isEmpty()) {
-                $latestBabak = $connection->table('grup')
-                    ->where('id_turnamen', $id)
-                    ->max('babak');
+            if ($useMeja) {
+                $groups = self::mapMahjongMejaRows(
+                    $connection,
+                    $id,
+                    self::mahjongMejaQuery($connection, $id, $kategoriId)->where('is_aktif', true)->orderBy('nama')->orderBy('id')->get()
+                );
 
-                if ($latestBabak) {
-                    $groupRows = self::resolveMahjongGrupBatchForBabak($connection, $id, (int) $latestBabak);
+                if ($groups === []) {
+                    $latestBabak = self::mahjongMejaQuery($connection, $id, $kategoriId)->max('babak');
+                    if ($latestBabak) {
+                        $groups = self::mapMahjongMejaRows(
+                            $connection,
+                            $id,
+                            self::mahjongMejaQuery($connection, $id, $kategoriId)
+                                ->where('babak', (int) $latestBabak)
+                                ->orderByDesc('ronde')
+                                ->orderBy('nama')
+                                ->orderBy('id')
+                                ->get()
+                        );
+                    }
                 }
-            }
 
-            $groups = $groupRows->map(function ($grup) use ($connection, $id) {
-                return self::mapMahjongGroupRow($connection, $grup, $id);
-            })->values()->all();
+                $displayedIds = [];
+                foreach ($groups as $group) {
+                    $displayedIds[(int) ($group['id'] ?? 0)] = true;
+                }
+
+                $inactiveMeja = self::mahjongMejaQuery($connection, $id, $kategoriId)
+                    ->where('is_aktif', false)
+                    ->orderByDesc('babak')
+                    ->orderBy('ronde')
+                    ->orderBy('nama')
+                    ->orderBy('id')
+                    ->get()
+                    ->filter(function ($meja) use ($displayedIds) {
+                        return empty($displayedIds[(int) $meja->id]);
+                    })
+                    ->values();
+
+                $history = self::buildMahjongHistorySections(
+                    self::mapMahjongMejaRows($connection, $id, $inactiveMeja)
+                );
+                $historyKind = 'meja';
+            } else {
+                $groupRows = self::mahjongGrupQuery($connection, $id, $kategoriId)
+                    ->where('is_aktif', true)
+                    ->orderBy('nama')
+                    ->orderBy('id')
+                    ->get();
+
+                if ($groupRows->isEmpty()) {
+                    $latestBabak = self::mahjongGrupQuery($connection, $id, $kategoriId)->max('babak');
+                    if ($latestBabak) {
+                        $groupRows = self::resolveMahjongGrupBatchForBabak($connection, $id, (int) $latestBabak, $kategoriId);
+                    }
+                }
+
+                $groups = $groupRows->map(function ($grup) use ($connection, $id) {
+                    return self::mapMahjongGroupRow($connection, $grup, $id);
+                })->values()->all();
+
+                $displayedIds = [];
+                foreach ($groups as $group) {
+                    $displayedIds[(int) ($group['id'] ?? 0)] = true;
+                }
+
+                $inactiveQuery = self::mahjongGrupQuery($connection, $id, $kategoriId)
+                    ->where('is_aktif', false)
+                    ->orderByDesc('babak');
+                if (Schema::connection('bornpadel')->hasColumn('grup', 'ronde')) {
+                    $inactiveQuery->orderBy('ronde');
+                }
+                $inactiveGroups = $inactiveQuery
+                    ->orderBy('nama')
+                    ->orderBy('id')
+                    ->get()
+                    ->filter(function ($grup) use ($displayedIds) {
+                        return empty($displayedIds[(int) $grup->id]);
+                    })
+                    ->map(function ($grup) use ($connection, $id) {
+                        return self::mapMahjongGroupRow($connection, $grup, $id);
+                    })
+                    ->values()
+                    ->all();
+
+                $history = self::buildMahjongHistorySections($inactiveGroups);
+                $historyKind = 'babak';
+            }
 
             return [
                 'data' => [
@@ -3294,6 +3371,8 @@ class BornpadelMahjongTournaments
                         'mahjong_external_scoring_enabled' => self::readMahjongExternalScoringEnabled($turnamen, true),
                     ],
                     'groups' => $groups,
+                    'history' => $history,
+                    'history_kind' => $historyKind,
                 ],
                 'error' => null,
             ];
@@ -3309,61 +3388,387 @@ class BornpadelMahjongTournaments
      * @param  object  $grup
      * @return array<string, mixed>
      */
-    private static function mapMahjongGroupRow($connection, $grup, int $turnamenId): array
+    private static function mapMahjongGroupRow($connection, $grup, int $turnamenId, $mejaId = null): array
     {
         $isActive = (bool) ($grup->is_aktif ?? false);
         $babak = (int) ($grup->babak ?? 0);
         $members = self::orderedGroupMembers($connection, (int) $grup->id);
 
-        return [
+        $mappedMembers = $members->map(function ($member) use ($connection, $isActive, $babak, $turnamenId, $mejaId) {
+            $poinDidapat = self::resolveMahjongBabakPoints(
+                $connection,
+                $member,
+                $babak,
+                $turnamenId,
+                $isActive
+            );
+            $entries = self::mahjongEntriesForMember($connection, (int) $member->id, $mejaId);
+            $penyesuaian = (int) ($member->poin_penyesuaian ?? 0);
+
+            return [
+                'id_grup_member' => (int) $member->id,
+                'id_pemain' => (int) ($member->id_pemain ?? 0),
+                'id_peserta' => (int) ($member->id_turnamen_peserta ?? 0),
+                'nama' => self::resolveMemberDisplayName($connection, $member),
+                'tim' => null,
+                'poin_didapat' => $poinDidapat,
+                'poin_akumulasi' => (int) ($member->poin_akumulasi ?? 0),
+                'poin_penyesuaian' => $penyesuaian,
+                'total_poin' => self::resolveMahjongTotalPoints($member, $poinDidapat, $isActive),
+                'menang' => self::countMahjongWinsForMember($entries),
+                'entries' => $entries,
+            ];
+        })->values()->all();
+
+        $group = [
             'id' => (int) $grup->id,
             'nama' => $grup->nama,
             'babak' => $babak,
+            'ronde' => (int) ($grup->ronde ?? 1),
             'is_aktif' => $isActive,
-            'members' => $members->map(function ($member) use ($connection, $isActive, $babak, $turnamenId) {
-                $poinDidapat = self::resolveMahjongBabakPoints(
-                    $connection,
-                    $member,
-                    $babak,
-                    $turnamenId,
-                    $isActive
-                );
-                $entries = self::mahjongEntriesForMember($connection, (int) $member->id);
-
-                return [
-                    'id_grup_member' => (int) $member->id,
-                    'id_pemain' => (int) ($member->id_pemain ?? 0),
-                    'id_peserta' => (int) ($member->id_turnamen_peserta ?? 0),
-                    'nama' => self::resolveMemberDisplayName($connection, $member),
-                    'poin_didapat' => $poinDidapat,
-                    'poin_akumulasi' => (int) ($member->poin_akumulasi ?? 0),
-                    'total_poin' => self::resolveMahjongTotalPoints($member, $poinDidapat, $isActive),
-                    'menang' => self::countMahjongWinsForMember($entries),
-                    'entries' => $entries,
-                ];
-            })->values()->all(),
+            'kind' => 'grup',
+            'members' => $mappedMembers,
         ];
+
+        return self::withMahjongGroupRounds($group);
+    }
+
+    private static function mahjongMejaQuery($connection, int $turnamenId, $idKategori = null)
+    {
+        $query = $connection->table('turnamen_meja')->where('id_turnamen', $turnamenId);
+
+        if ($idKategori !== null && $idKategori !== ''
+            && Schema::connection('bornpadel')->hasColumn('turnamen_meja', 'id_kategori')) {
+            $query->where('id_kategori', (int) $idKategori);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  iterable  $mejaRows
+     * @return array<int, array<string, mixed>>
+     */
+    private static function mapMahjongMejaRows($connection, int $turnamenId, $mejaRows): array
+    {
+        $mapped = [];
+
+        foreach ($mejaRows as $meja) {
+            $mapped[] = self::mapMahjongMejaRow($connection, $meja, $turnamenId);
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param  object  $meja
+     * @return array<string, mixed>
+     */
+    private static function mapMahjongMejaRow($connection, $meja, int $turnamenId): array
+    {
+        $seats = $connection->table('turnamen_meja_seat')
+            ->join('grup_member', 'grup_member.id', '=', 'turnamen_meja_seat.id_grup_member')
+            ->leftJoin('grup', 'grup.id', '=', 'grup_member.id_grup')
+            ->where('turnamen_meja_seat.id_meja', $meja->id)
+            ->orderBy('turnamen_meja_seat.seat_order')
+            ->orderBy('turnamen_meja_seat.id')
+            ->get([
+                'grup_member.*',
+                'grup.nama as tim_nama',
+                'turnamen_meja_seat.seat_order',
+            ]);
+
+        $isActive = (bool) ($meja->is_aktif ?? false);
+        $babak = (int) ($meja->babak ?? 0);
+        $mejaId = (int) $meja->id;
+
+        $mappedMembers = $seats->map(function ($member) use ($connection, $isActive, $babak, $turnamenId, $mejaId) {
+            $poinDidapat = self::resolveMahjongBabakPoints(
+                $connection,
+                $member,
+                $babak,
+                $turnamenId,
+                $isActive
+            );
+            $entries = self::mahjongEntriesForMember($connection, (int) $member->id, $mejaId);
+
+            return [
+                'id_grup_member' => (int) $member->id,
+                'id_pemain' => (int) ($member->id_pemain ?? 0),
+                'id_peserta' => (int) ($member->id_turnamen_peserta ?? 0),
+                'nama' => self::resolveMemberDisplayName($connection, $member),
+                'tim' => $member->tim_nama ?? null,
+                'poin_didapat' => $poinDidapat,
+                'poin_akumulasi' => (int) ($member->poin_akumulasi ?? 0),
+                'poin_penyesuaian' => (int) ($member->poin_penyesuaian ?? 0),
+                'total_poin' => self::resolveMahjongTotalPoints($member, $poinDidapat, $isActive),
+                'menang' => self::countMahjongWinsForMember($entries),
+                'entries' => $entries,
+            ];
+        })->values()->all();
+
+        $group = [
+            'id' => $mejaId,
+            'id_meja' => $mejaId,
+            'nama' => $meja->nama,
+            'babak' => $babak,
+            'ronde' => (int) ($meja->ronde ?? 1),
+            'is_aktif' => $isActive,
+            'kind' => 'meja',
+            'members' => $mappedMembers,
+        ];
+
+        return self::withMahjongGroupRounds($group);
+    }
+
+    /**
+     * @param  array{data?: array<string, mixed>|null, error: string|null}  $result
+     * @return array{data: array<string, mixed>|null, error: string|null}
+     */
+    private static function normalizeMahjongGroupsResult(array $result): array
+    {
+        $data = is_array($result['data'] ?? null) ? $result['data'] : [];
+        $groups = is_array($data['groups'] ?? null) ? $data['groups'] : [];
+        $normalized = [];
+
+        foreach ($groups as $group) {
+            $normalized[] = self::withMahjongGroupRounds(is_array($group) ? $group : []);
+        }
+
+        $data['groups'] = $normalized;
+        $data['history'] = is_array($data['history'] ?? null) ? $data['history'] : [];
+        $data['history_kind'] = $data['history_kind'] ?? (
+            (($data['turnamen']['jenis'] ?? null) === 'mahjong_team') ? 'meja' : 'babak'
+        );
+        $result['data'] = $data;
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $group
+     * @return array<string, mixed>
+     */
+    private static function withMahjongGroupRounds(array $group): array
+    {
+        $members = is_array($group['members'] ?? null) ? $group['members'] : [];
+        $normalizedMembers = [];
+
+        foreach ($members as $member) {
+            $member = is_array($member) ? $member : [];
+            $member['id_grup_member'] = (int) ($member['id_grup_member'] ?? $member['id'] ?? 0);
+            $member['poin_penyesuaian'] = (int) ($member['poin_penyesuaian'] ?? 0);
+            $member['entries'] = is_array($member['entries'] ?? null) ? $member['entries'] : [];
+            $member['menang'] = isset($member['menang'])
+                ? (int) $member['menang']
+                : self::countMahjongWinsForMember($member['entries']);
+            $normalizedMembers[] = $member;
+        }
+
+        $group['members'] = $normalizedMembers;
+        $group['rounds'] = self::buildMahjongScoreRounds($normalizedMembers);
+        $group['ronde'] = (int) ($group['ronde'] ?? 1);
+        $group['kind'] = $group['kind'] ?? (! empty($group['id_meja']) ? 'meja' : 'grup');
+
+        return $group;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $members
+     * @return array<int, array<int, array<string, mixed>|null>>
+     */
+    private static function buildMahjongScoreRounds(array $members): array
+    {
+        $memberIds = [];
+        foreach ($members as $member) {
+            $id = (int) ($member['id_grup_member'] ?? 0);
+            if ($id > 0) {
+                $memberIds[] = $id;
+            }
+        }
+
+        if ($memberIds === []) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($members as $member) {
+            $memberId = (int) ($member['id_grup_member'] ?? 0);
+            foreach ($member['entries'] ?? [] as $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+                $items[] = [
+                    'member_id' => $memberId,
+                    'entry' => $entry,
+                    'ts' => (int) ($entry['created_at'] ?? 0),
+                    'id' => (int) ($entry['id'] ?? 0),
+                ];
+            }
+        }
+
+        if ($items === []) {
+            return [];
+        }
+
+        $hasTimestamps = false;
+        foreach ($items as $item) {
+            if ($item['ts'] > 0) {
+                $hasTimestamps = true;
+                break;
+            }
+        }
+
+        if (! $hasTimestamps) {
+            $byMember = [];
+            $max = 0;
+            foreach ($members as $member) {
+                $id = (int) ($member['id_grup_member'] ?? 0);
+                $entries = array_values($member['entries'] ?? []);
+                $byMember[$id] = $entries;
+                $max = max($max, count($entries));
+            }
+
+            $rounds = [];
+            for ($i = 0; $i < $max; $i++) {
+                $round = [];
+                foreach ($memberIds as $id) {
+                    $round[] = $byMember[$id][$i] ?? null;
+                }
+                $rounds[] = $round;
+            }
+
+            return $rounds;
+        }
+
+        usort($items, static function ($a, $b) {
+            if ($a['ts'] === $b['ts']) {
+                return $a['id'] <=> $b['id'];
+            }
+
+            return $a['ts'] <=> $b['ts'];
+        });
+
+        $rounds = [];
+        $used = [];
+        foreach ($items as $item) {
+            $itemId = $item['id'] > 0 ? $item['id'] : spl_object_hash((object) $item);
+            if (isset($used[$itemId])) {
+                continue;
+            }
+
+            $roundMap = [];
+            foreach ($memberIds as $id) {
+                $roundMap[$id] = null;
+            }
+            $roundMap[$item['member_id']] = $item['entry'];
+            $used[$itemId] = true;
+
+            foreach ($items as $otherIndex => $other) {
+                $otherId = $other['id'] > 0 ? $other['id'] : ('i'.$otherIndex);
+                if (isset($used[$otherId])) {
+                    continue;
+                }
+                if (($roundMap[$other['member_id']] ?? null) !== null) {
+                    continue;
+                }
+                if (abs($other['ts'] - $item['ts']) <= 3) {
+                    $roundMap[$other['member_id']] = $other['entry'];
+                    $used[$otherId] = true;
+                }
+            }
+
+            $round = [];
+            foreach ($memberIds as $id) {
+                $round[] = $roundMap[$id] ?? null;
+            }
+            $rounds[] = $round;
+        }
+
+        return $rounds;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $groups
+     * @return array<int, array<string, mixed>>
+     */
+    private static function buildMahjongHistorySections(array $groups): array
+    {
+        $byBabak = [];
+
+        foreach ($groups as $group) {
+            $babak = (int) ($group['babak'] ?? 1);
+            if ($babak <= 0) {
+                $babak = 1;
+            }
+            $ronde = (int) ($group['ronde'] ?? 1);
+            if ($ronde <= 0) {
+                $ronde = 1;
+            }
+            $byBabak[$babak][$ronde][] = $group;
+        }
+
+        krsort($byBabak, SORT_NUMERIC);
+
+        $sections = [];
+        foreach ($byBabak as $babak => $rondes) {
+            ksort($rondes, SORT_NUMERIC);
+            $rondeList = [];
+            foreach ($rondes as $ronde => $rondeGroups) {
+                $rondeList[] = [
+                    'ronde' => (int) $ronde,
+                    'groups' => array_values($rondeGroups),
+                ];
+            }
+            $sections[] = [
+                'babak' => (int) $babak,
+                'rondes' => $rondeList,
+            ];
+        }
+
+        return $sections;
     }
 
     /**
      * @return array<int, array{id:int, poin:int, is_winner:bool}>
      */
-    private static function mahjongEntriesForMember($connection, int $memberId): array
+    private static function mahjongEntriesForMember($connection, int $memberId, $mejaId = null): array
     {
         try {
             if (! Schema::connection('bornpadel')->hasTable('mahjong_poin_entry')) {
                 return [];
             }
 
-            return $connection->table('mahjong_poin_entry')
-                ->where('id_grup_member', $memberId)
-                ->orderBy('id')
-                ->get()
+            $query = $connection->table('mahjong_poin_entry')
+                ->where('id_grup_member', $memberId);
+
+            if ($mejaId !== null
+                && Schema::connection('bornpadel')->hasColumn('mahjong_poin_entry', 'id_meja')) {
+                $query->where('id_meja', (int) $mejaId);
+            }
+
+            $columns = ['id', 'poin', 'is_winner'];
+            if (Schema::connection('bornpadel')->hasColumn('mahjong_poin_entry', 'created_at')) {
+                $columns[] = 'created_at';
+            }
+
+            return $query->orderBy('id')
+                ->get($columns)
                 ->map(function ($entry) {
+                    $createdAt = 0;
+                    if (! empty($entry->created_at)) {
+                        try {
+                            $createdAt = Carbon::parse($entry->created_at)->getTimestamp();
+                        } catch (Throwable $e) {
+                            $createdAt = 0;
+                        }
+                    }
+
                     return [
                         'id' => (int) $entry->id,
                         'poin' => (int) $entry->poin,
                         'is_winner' => (bool) ($entry->is_winner ?? false),
+                        'created_at' => $createdAt,
                     ];
                 })
                 ->values()

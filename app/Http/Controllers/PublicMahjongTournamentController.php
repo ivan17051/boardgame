@@ -56,13 +56,17 @@ class PublicMahjongTournamentController extends Controller
     {
         $tournament = $this->tournamentOrAbort($id);
         $idKategori = $this->resolveKategoriId($request, $tournament);
-        $result = BornpadelMahjongTournaments::fetchMahjongGroups($id);
+        $result = BornpadelMahjongTournaments::fetchMahjongGroups($id, $idKategori);
         $data = is_array($result['data'] ?? null) ? $result['data'] : [];
 
         return view('public.mahjong-groups', [
             'tournament' => $tournament,
             'idKategori' => $idKategori,
             'groups' => is_array($data['groups'] ?? null) ? $data['groups'] : [],
+            'groupHistory' => is_array($data['history'] ?? null) ? $data['history'] : [],
+            'groupHistoryKind' => $data['history_kind'] ?? (
+                (($tournament['jenis'] ?? null) === 'mahjong_team') ? 'meja' : 'babak'
+            ),
             'groupsError' => $result['error'],
             'canInputScores' => BornpadelMahjongTournaments::canInputPublicScores($tournament, $idKategori, $data),
             'scoreStoreUrl' => route('public.mahjong-tournaments.scores.store', $id),

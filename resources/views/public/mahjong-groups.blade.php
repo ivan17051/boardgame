@@ -56,6 +56,65 @@
   .group-card .table {
     margin-bottom: 0;
   }
+  .group-score-table thead th,
+  .group-score-table tfoot th {
+    background: #f4f7f5;
+    white-space: nowrap;
+  }
+  .group-history-card .group-history-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .group-history-tab {
+    border: 1px solid rgba(0, 97, 49, 0.16);
+    background: #fff;
+    color: var(--brand-dark);
+    border-radius: 999px;
+    padding: 0.3rem 0.85rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .group-history-tab.is-active {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: #fff;
+  }
+  .group-history-pane {
+    display: none;
+  }
+  .group-history-pane.is-active {
+    display: block;
+  }
+  .group-history-item {
+    border: 1px solid rgba(0, 97, 49, 0.12);
+    border-radius: 0.65rem;
+    overflow: hidden;
+    margin-bottom: 0.65rem;
+    background: #fff;
+  }
+  .group-history-item summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    color: var(--brand-dark);
+    background: rgba(0, 97, 49, 0.04);
+  }
+  .group-history-item summary::-webkit-details-marker {
+    display: none;
+  }
+  .group-history-item[open] summary {
+    border-bottom: 1px solid rgba(0, 97, 49, 0.1);
+  }
+  .group-history-item-body .group-card {
+    margin-bottom: 0;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
   .score-overlay {
     position: fixed;
     inset: 0;
@@ -199,7 +258,7 @@
     </div>
   @endif
 
-  @if (empty($groups))
+  @if (empty($groups) && empty($groupHistory ?? []))
     <div class="card group-card">
       <div class="card-body text-center text-secondary py-5">
         <i class="bi bi-inbox fs-1 d-block mb-2"></i>
@@ -213,6 +272,11 @@
         'canInputScores' => $canInputScores ?? false,
       ])
     @endforeach
+
+    @include('public.partials.mahjong-group-history', [
+      'groupHistory' => $groupHistory ?? [],
+      'groupHistoryKind' => $groupHistoryKind ?? 'babak',
+    ])
   @endif
 
   @if (! empty($canInputScores))
@@ -452,3 +516,23 @@
 </script>
 @endpush
 @endif
+
+@push('scripts')
+<script>
+  (function () {
+    const tabs = Array.from(document.querySelectorAll('.group-history-tab'));
+    if (! tabs.length) return;
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const targetId = tab.getAttribute('data-history-target');
+        tabs.forEach((item) => item.classList.toggle('is-active', item === tab));
+        document.querySelectorAll('.group-history-pane').forEach((pane) => {
+          pane.classList.toggle('is-active', pane.id === targetId);
+        });
+      });
+    });
+  })();
+</script>
+@endpush
+
