@@ -377,7 +377,7 @@ class BornpadelMahjongTournaments
             return $fromDatabase;
         }
 
-        return self::fetchGroupStandingsFromApi($id);
+        return self::fetchGroupStandingsFromApi($id, $idKategori);
     }
 
     /**
@@ -427,7 +427,7 @@ class BornpadelMahjongTournaments
                         'overall' => [],
                         'recap' => [],
                         'babak_numbers' => [],
-                        'ranking_note' => 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.',
+                        'ranking_note' => 'Peringkat berdasarkan total poin tim, termasuk bonus/penalti. Poin tiap pemain tercantum di bawah nama tim.',
                     ],
                     'error' => null,
                 ];
@@ -1181,7 +1181,7 @@ class BornpadelMahjongTournaments
     }
 
     /**
-     * Team standings for Mahjong Tim: active teams ranked by sum of poin_didapat.
+     * Team standings for Mahjong Tim: active teams ranked by sum of poin babak (poin didapat plus bonus/penalti).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -1205,19 +1205,25 @@ class BornpadelMahjongTournaments
             $mappedMembers = [];
             $total = 0;
 
+            $hasPenyesuaian = Schema::connection('bornpadel')->hasColumn('grup_member', 'poin_penyesuaian');
+
             foreach ($members as $member) {
-                $poin = (int) ($member->poin_didapat ?? 0);
-                $total += $poin;
+                $poinDidapat = (int) ($member->poin_didapat ?? 0);
+                $penyesuaian = $hasPenyesuaian ? (int) ($member->poin_penyesuaian ?? 0) : 0;
+                $poinBabak = $poinDidapat + $penyesuaian;
+                $total += $poinBabak;
                 $mappedMembers[] = [
                     'id' => (int) $member->id,
                     'id_pemain' => ! empty($member->id_pemain) ? (int) $member->id_pemain : null,
                     'nama' => self::resolveMemberDisplayName($connection, $member),
-                    'poin_didapat' => $poin,
+                    'poin_didapat' => $poinDidapat,
+                    'poin_penyesuaian' => $penyesuaian,
+                    'poin_babak' => $poinBabak,
                 ];
             }
 
             usort($mappedMembers, static function (array $a, array $b) {
-                $cmp = ((int) $b['poin_didapat']) <=> ((int) $a['poin_didapat']);
+                $cmp = ((int) ($b['poin_babak'] ?? 0)) <=> ((int) ($a['poin_babak'] ?? 0));
 
                 return $cmp !== 0 ? $cmp : ((int) ($a['id'] ?? 0)) <=> ((int) ($b['id'] ?? 0));
             });
@@ -3868,7 +3874,7 @@ class BornpadelMahjongTournaments
     /**
      * @return array{data: array<string, mixed>|null, error: string|null}
      */
-    private static function fetchGroupStandingsFromApi(int $id): array
+    private static function fetchGroupStandingsFromApi(int $id, $idKategori = null): array
     {
         $apiUrl = rtrim((string) config('services.bornpadel.api_url'), '/');
         $token = config('services.bornpadel.api_token');
@@ -3884,7 +3890,11 @@ class BornpadelMahjongTournaments
             $response = Http::timeout(15)
                 ->acceptJson()
                 ->withToken($token)
-                ->get($apiUrl.'/tournaments/'.$id.'/group-standings');
+                ->get($apiUrl.'/tournaments/'.$id.'/group-standings', array_filter([
+                    'id_kategori' => $idKategori,
+                ], static function ($value) {
+                    return $value !== null && $value !== '';
+                }));
 
             if ($response->successful() && $response->json('success') === true) {
                 $data = $response->json('data');
@@ -3898,7 +3908,7 @@ class BornpadelMahjongTournaments
                     $data['teams'] = $data['groups'];
                     $data['sections'] = $data['sections'] ?? [];
                     $data['ranking_note'] = $data['ranking_note']
-                        ?? 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.';
+                        ?? 'Peringkat berdasarkan total poin tim, termasuk bonus/penalti. Poin tiap pemain tercantum di bawah nama tim.';
                 }
 
                 return [
