@@ -104,11 +104,17 @@
   .tournament-card-actions--2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .tournament-card-actions--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .tournament-card-actions .btn {
     min-height: 2.25rem;
+    padding: 0.375rem 0.5rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    white-space: nowrap;
   }
   .winner-row {
     display: flex;
@@ -327,8 +333,14 @@
                 } elseif ($status === 'ongoing') {
                   $actionCount += 2;
                 }
+                $actionClass = '';
+                if ($actionCount >= 3) {
+                  $actionClass = 'tournament-card-actions--3';
+                } elseif ($actionCount >= 2) {
+                  $actionClass = 'tournament-card-actions--2';
+                }
               @endphp
-              <div class="mt-auto tournament-card-actions {{ $actionCount >= 2 ? 'tournament-card-actions--2' : '' }}">
+              <div class="mt-auto tournament-card-actions {{ $actionClass }}">
                   @if ($status === 'open')
                     @php
                       $registerUrl = route('public.mahjong-tournaments.register', $item['id']);

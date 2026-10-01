@@ -139,7 +139,7 @@
   @endif
 
   <div class="card participants-card">
-    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center gap-2">
       <span><i class="bi bi-people me-2"></i>Pemain Terdaftar</span>
       <span class="badge text-bg-secondary">{{ count($participants) }}</span>
     </div>
@@ -156,7 +156,7 @@
               <tr>
                 <th style="width:3rem">#</th>
                 <th>Nama</th>
-                <th>Status</th>
+                <th class="text-end">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -176,10 +176,14 @@
                 <tr>
                   <td>{{ $index + 1 }}</td>
                   <td class="fw-semibold">{{ $item['nama'] ?? '—' }}</td>
-                  <td>
-                    <span class="badge status-badge-{{ $item['status'] ?? '' }}">
-                      {{ \App\Support\BornpadelMahjongTournaments::registrationStatusLabel($item['status'] ?? null) }}
-                    </span>
+                  <td class="text-end">
+                    <x-peserta-status-badges
+                      class="justify-content-end"
+                      :status="$item['status'] ?? null"
+                      :payment-status="$item['payment_status'] ?? null"
+                      :status-label="$item['status_label'] ?? null"
+                      :payment-label="$item['payment_status_label'] ?? null"
+                    />
                   </td>
                 </tr>
               @endforeach

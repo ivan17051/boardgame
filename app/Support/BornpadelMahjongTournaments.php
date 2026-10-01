@@ -189,6 +189,13 @@ class BornpadelMahjongTournaments
                 'm_pemain.nama',
             ];
 
+            if (Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'payment_status')) {
+                $select[] = 'turnamen_peserta.payment_status';
+            }
+            if (Schema::connection('bornpadel')->hasColumn('turnamen_peserta', 'bukti_bayar')) {
+                $select[] = 'turnamen_peserta.bukti_bayar';
+            }
+
             $query = $connection->table('turnamen_peserta')
                 ->leftJoin('m_pemain', 'm_pemain.id', '=', 'turnamen_peserta.id_pemain1')
                 ->where('turnamen_peserta.id_turnamen', $id)
@@ -315,10 +322,18 @@ class BornpadelMahjongTournaments
     {
         $data = is_array($row) ? $row : (array) $row;
         $nama = $data['nama'] ?? $data['display'] ?? $data['label'] ?? null;
+        $state = self::normalizeRegistrationState(
+            $data['status'] ?? null,
+            $data['payment_status'] ?? null,
+            filled($data['bukti_bayar'] ?? null)
+        );
         $item = [
             'id' => isset($data['id']) ? (int) $data['id'] : null,
             'nama' => $nama !== null && $nama !== '' ? (string) $nama : '—',
-            'status' => $data['status'] ?? null,
+            'status' => $state['status'],
+            'status_label' => self::verificationStatusLabel($state['status']),
+            'payment_status' => $state['payment_status'],
+            'payment_status_label' => self::paymentStatusLabel($state['payment_status']),
         ];
 
         if (! $includeGroup) {
@@ -2177,21 +2192,80 @@ class BornpadelMahjongTournaments
         }
     }
 
+    /**
+     * Split legacy combined status values (unpaid/paid) from verification.
+     *
+     * @return array{status: string, payment_status: string}
+     */
+    public static function normalizeRegistrationState(
+        ?string $status = null,
+        ?string $paymentStatus = null,
+        bool $hasReceipt = false
+    ): array {
+        $verification = $status;
+        $payment = $paymentStatus;
+
+        if ($verification === 'paid') {
+            $payment = $payment ?: 'paid';
+            $verification = 'pending';
+        } elseif ($verification === 'unpaid') {
+            $payment = $payment ?: 'unpaid';
+            $verification = 'pending';
+        }
+
+        if (! in_array($verification, ['pending', 'approved', 'rejected'], true)) {
+            $verification = 'pending';
+        }
+
+        if (! in_array($payment, ['unpaid', 'paid'], true)) {
+            $payment = $hasReceipt ? 'paid' : 'unpaid';
+        }
+
+        return [
+            'status' => $verification,
+            'payment_status' => $payment,
+        ];
+    }
+
+    public static function verificationStatusLabel(?string $status): string
+    {
+        switch ($status) {
+            case 'pending':
+                return 'Pending';
+            case 'approved':
+                return 'Approved';
+            case 'rejected':
+                return 'Rejected';
+            default:
+                return $status ? ucfirst(str_replace('_', ' ', $status)) : '—';
+        }
+    }
+
+    public static function paymentStatusLabel(?string $paymentStatus): string
+    {
+        return $paymentStatus === 'paid' ? 'Paid' : 'Unpaid';
+    }
+
     public static function registrationStatusLabel(?string $status): string
     {
+        $state = self::normalizeRegistrationState($status);
+
         switch ($status) {
             case 'unpaid':
                 return 'Belum bayar';
-            case 'pending':
-                return 'Menunggu verifikasi';
             case 'paid':
                 return 'Sudah bayar';
-            case 'approved':
-                return 'Disetujui';
-            case 'rejected':
-                return 'Ditolak';
             default:
-                return $status ? ucfirst(str_replace('_', ' ', $status)) : '—';
+                switch ($state['status']) {
+                    case 'pending':
+                        return 'Menunggu verifikasi';
+                    case 'approved':
+                        return 'Disetujui';
+                    case 'rejected':
+                        return 'Ditolak';
+                    default:
+                        return $status ? ucfirst(str_replace('_', ' ', $status)) : '—';
+                }
         }
     }
 

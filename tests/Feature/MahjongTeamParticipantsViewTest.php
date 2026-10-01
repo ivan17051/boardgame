@@ -59,6 +59,7 @@ class MahjongTeamParticipantsViewTest extends TestCase
         $this->assertStringContainsString('Citra', $html);
         $this->assertStringContainsString('Dewi', $html);
         $this->assertStringContainsString('Individu / Belum berkelompok', $html);
+        $this->assertStringContainsString('card-header py-3 d-flex justify-content-between align-items-center gap-2', $html);
 
         $dragonPos = strpos($html, 'Dragon Squad');
         $tigerPos = strpos($html, 'Tiger Clan');
@@ -94,6 +95,51 @@ class MahjongTeamParticipantsViewTest extends TestCase
         $this->assertStringNotContainsString('Individu / Belum berkelompok', $html);
         $this->assertStringNotContainsString('class="participant-group-row"', $html);
         $this->assertStringNotContainsString('guest-tournament-nav__label">Klasemen', $html);
+        $this->assertStringContainsString('data-status-cell', $html);
+        $this->assertStringContainsString('data-payment-cell', $html);
+        $this->assertStringContainsString('Approved', $html);
+        $this->assertStringContainsString('Unpaid', $html);
+        $this->assertStringContainsString('status-badge-approved', $html);
+        $this->assertStringContainsString('status-badge-unpaid', $html);
+    }
+
+    public function test_peserta_status_is_split_from_legacy_paid_status(): void
+    {
+        $html = view('public.mahjong-participants', [
+            'tournament' => [
+                'id' => 5,
+                'nama' => 'Payment Split Cup',
+                'jenis' => 'mahjong',
+                'status' => 'open',
+            ],
+            'idKategori' => null,
+            'participants' => [
+                [
+                    'id' => 1,
+                    'nama' => 'Andi',
+                    'status' => 'paid',
+                ],
+                [
+                    'id' => 2,
+                    'nama' => 'Budi',
+                    'status' => 'approved',
+                    'payment_status' => 'paid',
+                    'status_label' => 'Approved',
+                    'payment_status_label' => 'Paid',
+                ],
+            ],
+            'participantType' => 'single',
+            'participantsError' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Pending', $html);
+        $this->assertStringContainsString('Paid', $html);
+        $this->assertStringContainsString('Approved', $html);
+        $this->assertStringContainsString('status-badge-pending', $html);
+        $this->assertStringContainsString('status-badge-paid', $html);
+        $this->assertStringContainsString('status-badge-approved', $html);
+        $this->assertEquals(2, substr_count($html, 'data-status-cell'));
+        $this->assertEquals(2, substr_count($html, 'data-payment-cell'));
     }
 
     public function test_klasemen_tab_is_hidden_when_tournament_is_open(): void
