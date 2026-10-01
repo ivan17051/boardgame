@@ -162,7 +162,7 @@
                         @foreach ($members as $member)
                           <li>
                             {{ $member['nama'] ?? '—' }}
-                            <span class="ms-1">{{ (int) ($member['poin_didapat'] ?? 0) }}</span>
+                            <span class="ms-1">{{ (int) ($member['poin_babak'] ?? $member['poin_didapat'] ?? 0) }}</span>
                           </li>
                         @endforeach
                       </ul>
@@ -177,7 +177,7 @@
           </table>
         </div>
         <div class="px-3 py-2 border-top standings-note small text-muted">
-          {{ $standings['ranking_note'] ?? 'Peringkat berdasarkan total poin tim. Poin tiap pemain tercantum di bawah nama tim.' }}
+          {{ $standings['ranking_note'] ?? 'Peringkat berdasarkan total poin tim, termasuk bonus/penalti. Poin tiap pemain tercantum di bawah nama tim.' }}
         </div>
       </div>
     @endif
