@@ -601,12 +601,9 @@ class BornpadelMahjongTournaments
                 if ($member) {
                     $latestMember = $member;
                     $roundScores[] = self::resolveMahjongRoundPoints(
-                        $connection,
                         $member,
                         $roundBatches,
-                        (int) $roundIndex,
-                        $babak,
-                        $turnamenId
+                        (int) $roundIndex
                     );
                 } else {
                     $roundScores[] = 0;
@@ -1035,7 +1032,7 @@ class BornpadelMahjongTournaments
      * @param  object  $member
      * @param  array<int, array<int, object>>  $roundBatches
      */
-    private static function resolveMahjongRoundPoints($connection, $member, array $roundBatches, int $roundIndex, int $babak, int $turnamenId): int
+    private static function resolveMahjongRoundPoints($member, array $roundBatches, int $roundIndex): int
     {
         if (! empty($member->_grup_is_aktif)) {
             return (int) ($member->poin_didapat ?? 0);
@@ -1046,12 +1043,9 @@ class BornpadelMahjongTournaments
         }
 
         $startTotal = self::resolveMahjongRoundStartTotal(
-            $connection,
             (int) ($member->id_turnamen_peserta ?? 0),
             $roundBatches,
-            $roundIndex,
-            $babak,
-            $turnamenId
+            $roundIndex
         );
 
         return (int) ($member->poin_akumulasi ?? 0) - $startTotal;
@@ -1060,21 +1054,26 @@ class BornpadelMahjongTournaments
     /**
      * @param  array<int, array<int, object>>  $roundBatches
      */
-    private static function resolveMahjongRoundStartTotal($connection, int $pesertaId, array $roundBatches, int $roundIndex, int $babak, int $turnamenId): int
+    private static function resolveMahjongRoundStartTotal(int $pesertaId, array $roundBatches, int $roundIndex): int
     {
-        if ($roundIndex > 0 && $pesertaId > 0) {
-            $prevBatch = $roundBatches[$roundIndex - 1] ?? null;
+        // Each babak resets the scoreboard. Ronde 1 always starts from 0.
+        if ($roundIndex <= 0) {
+            return 0;
+        }
 
-            if ($prevBatch) {
-                $prevMember = self::findMahjongMemberInBatch($prevBatch, $pesertaId);
+        $prevBatch = $roundBatches[$roundIndex - 1] ?? null;
 
-                if ($prevMember) {
-                    return (int) ($prevMember->poin_akumulasi ?? 0);
-                }
+        if ($prevBatch && $pesertaId > 0) {
+            $prevMember = self::findMahjongMemberInBatch($prevBatch, $pesertaId);
+
+            if ($prevMember) {
+                // After commit, the round total sits in poin_akumulasi (poin_didapat = 0).
+                // Before commit, the running total is akumulasi + didapat.
+                return (int) ($prevMember->poin_akumulasi ?? 0) + (int) ($prevMember->poin_didapat ?? 0);
             }
         }
 
-        return self::getMahjongCarryPointsBeforeBabak($connection, $pesertaId, $babak, $turnamenId);
+        return 0;
     }
 
     /**
@@ -1104,14 +1103,7 @@ class BornpadelMahjongTournaments
             return (int) $member->poin_didapat;
         }
 
-        $startAkumulasi = self::getMahjongCarryPointsBeforeBabak(
-            $connection,
-            (int) ($member->id_turnamen_peserta ?? 0),
-            $babak,
-            $turnamenId
-        );
-
-        return max(0, (int) ($member->poin_akumulasi ?? 0) - $startAkumulasi);
+        return (int) ($member->poin_akumulasi ?? 0);
     }
 
     /**
@@ -1128,32 +1120,6 @@ class BornpadelMahjongTournaments
         }
 
         return (int) ($member->poin_akumulasi ?? 0);
-    }
-
-    private static function getMahjongCarryPointsBeforeBabak($connection, int $pesertaId, int $babak, int $turnamenId): int
-    {
-        if ($pesertaId <= 0 || $babak <= 1) {
-            return 0;
-        }
-
-        $previousMember = $connection->table('grup_member')
-            ->join('grup', 'grup.id', '=', 'grup_member.id_grup')
-            ->where('grup_member.id_turnamen_peserta', $pesertaId)
-            ->where('grup.id_turnamen', $turnamenId)
-            ->where('grup.babak', $babak - 1)
-            ->orderByDesc('grup_member.id')
-            ->select('grup_member.*')
-            ->first();
-
-        if (! $previousMember) {
-            return 0;
-        }
-
-        if ((int) ($previousMember->poin_didapat ?? 0) !== 0) {
-            return (int) $previousMember->poin_akumulasi;
-        }
-
-        return (int) ($previousMember->poin_akumulasi ?? 0);
     }
 
     /**
