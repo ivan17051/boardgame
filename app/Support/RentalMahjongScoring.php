@@ -175,43 +175,8 @@ class RentalMahjongScoring
             ]);
         }
 
-        if (count($scores) !== self::PLAYER_COUNT) {
-            throw ValidationException::withMessages([
-                'scores' => ['Harus mengisi poin untuk '.self::PLAYER_COUNT.' pemain.'],
-            ]);
-        }
-
-        $bySeat = [];
-        foreach ($scores as $row) {
-            $seat = (int) ($row['seat'] ?? 0);
-            if ($seat < 1 || $seat > self::PLAYER_COUNT || isset($bySeat[$seat])) {
-                throw ValidationException::withMessages([
-                    'scores' => ['Data poin kursi tidak valid.'],
-                ]);
-            }
-            $poinRaw = $row['poin'] ?? 0;
-            if ($poinRaw === '' || $poinRaw === null) {
-                $poinRaw = 0;
-            }
-            if (! is_numeric($poinRaw)) {
-                throw ValidationException::withMessages([
-                    'scores' => ['Poin kursi '.$seat.' wajib angka.'],
-                ]);
-            }
-            $bySeat[$seat] = (int) $poinRaw;
-        }
-
-        if (count($bySeat) !== self::PLAYER_COUNT) {
-            throw ValidationException::withMessages([
-                'scores' => ['Poin harus lengkap untuk semua kursi.'],
-            ]);
-        }
-
-        if ($winnerSeat !== null && ($winnerSeat < 1 || $winnerSeat > self::PLAYER_COUNT)) {
-            throw ValidationException::withMessages([
-                'winner_seat' => ['Pemenang tidak valid.'],
-            ]);
-        }
+        $bySeat = self::normalizeSeatScores($scores);
+        $winnerSeat = self::winnerSeatFromScores($bySeat, $winnerSeat);
 
         DB::transaction(function () use ($session, $players, $bySeat, $winnerSeat) {
             $nextNo = (int) RentalMahjongHand::query()
@@ -263,6 +228,162 @@ class RentalMahjongScoring
         return $session->fresh(['players', 'rental.meja.toko', 'hands' => function ($q) {
             $q->orderByDesc('hand_no')->with('scores');
         }]);
+    }
+
+    /**
+     * @param  array<int, array{seat: int, poin: int}>  $scores
+     */
+    public static function updateHand(
+        RentalMahjongSession $session,
+        int $handId,
+        array $scores,
+        ?int $winnerSeat = null
+    ): RentalMahjongSession {
+        self::assertWritable($session);
+
+        $hand = RentalMahjongHand::query()
+            ->where('session_id', $session->id)
+            ->where('id', $handId)
+            ->whereNull('voided_at')
+            ->first();
+
+        if (! $hand) {
+            throw ValidationException::withMessages([
+                'hand' => ['Ronde tidak ditemukan atau sudah dibatalkan.'],
+            ]);
+        }
+
+        $players = $session->players()->orderBy('seat')->get();
+        if ($players->count() !== self::PLAYER_COUNT) {
+            throw ValidationException::withMessages([
+                'scores' => ['Isi nama '.self::PLAYER_COUNT.' pemain terlebih dahulu.'],
+            ]);
+        }
+
+        $bySeat = self::normalizeSeatScores($scores);
+        $winnerSeat = self::winnerSeatFromScores($bySeat, $winnerSeat);
+        $playersBySeat = $players->keyBy('seat');
+
+        DB::transaction(function () use ($hand, $playersBySeat, $bySeat, $winnerSeat) {
+            $hand->update(['winner_seat' => $winnerSeat]);
+
+            foreach ($bySeat as $seat => $poin) {
+                /** @var RentalMahjongPlayer $player */
+                $player = $playersBySeat->get($seat);
+                RentalMahjongHandScore::query()->updateOrCreate(
+                    [
+                        'hand_id' => $hand->id,
+                        'player_id' => $player->id,
+                    ],
+                    ['poin' => $poin]
+                );
+            }
+        });
+
+        return $session->fresh(['players', 'rental.meja.toko', 'hands' => function ($q) {
+            $q->orderByDesc('hand_no')->with('scores');
+        }]);
+    }
+
+    public static function resetSession(RentalMahjongSession $session, bool $resetPlayers = false): RentalMahjongSession
+    {
+        self::assertWritable($session);
+
+        DB::transaction(function () use ($session, $resetPlayers) {
+            $handIds = RentalMahjongHand::query()
+                ->where('session_id', $session->id)
+                ->pluck('id');
+
+            if ($handIds->isNotEmpty()) {
+                RentalMahjongHandScore::query()->whereIn('hand_id', $handIds)->delete();
+                RentalMahjongHand::query()->where('session_id', $session->id)->delete();
+            }
+
+            if ($resetPlayers) {
+                RentalMahjongPlayer::query()->where('session_id', $session->id)->delete();
+            }
+        });
+
+        return $session->fresh(['players', 'rental.meja.toko', 'hands' => function ($q) {
+            $q->orderByDesc('hand_no')->with('scores');
+        }]);
+    }
+
+    /**
+     * Unique highest score wins. Ties keep a preferred seat only if it is among the leaders.
+     *
+     * @param  array<int, int>  $bySeat
+     */
+    public static function winnerSeatFromScores(array $bySeat, ?int $preferredSeat = null): ?int
+    {
+        if ($bySeat === []) {
+            return null;
+        }
+
+        if ($preferredSeat !== null && ($preferredSeat < 1 || $preferredSeat > self::PLAYER_COUNT)) {
+            throw ValidationException::withMessages([
+                'winner_seat' => ['Pemenang tidak valid.'],
+            ]);
+        }
+
+        $max = max($bySeat);
+        $leaders = [];
+        foreach ($bySeat as $seat => $poin) {
+            if ((int) $poin === (int) $max) {
+                $leaders[] = (int) $seat;
+            }
+        }
+
+        if (count($leaders) === 1) {
+            return $leaders[0];
+        }
+
+        if ($preferredSeat !== null && in_array($preferredSeat, $leaders, true)) {
+            return $preferredSeat;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array{seat?: int, poin?: mixed}>  $scores
+     * @return array<int, int>
+     */
+    private static function normalizeSeatScores(array $scores): array
+    {
+        if (count($scores) !== self::PLAYER_COUNT) {
+            throw ValidationException::withMessages([
+                'scores' => ['Harus mengisi poin untuk '.self::PLAYER_COUNT.' pemain.'],
+            ]);
+        }
+
+        $bySeat = [];
+        foreach ($scores as $row) {
+            $seat = (int) ($row['seat'] ?? 0);
+            if ($seat < 1 || $seat > self::PLAYER_COUNT || isset($bySeat[$seat])) {
+                throw ValidationException::withMessages([
+                    'scores' => ['Data poin kursi tidak valid.'],
+                ]);
+            }
+            $poinRaw = $row['poin'] ?? 0;
+            if ($poinRaw === '' || $poinRaw === null) {
+                $poinRaw = 0;
+            }
+            if (! is_numeric($poinRaw)) {
+                throw ValidationException::withMessages([
+                    'scores' => ['Poin kursi '.$seat.' wajib angka.'],
+                ]);
+            }
+            $bySeat[$seat] = (int) $poinRaw;
+        }
+
+        if (count($bySeat) !== self::PLAYER_COUNT) {
+            throw ValidationException::withMessages([
+                'scores' => ['Poin harus lengkap untuk semua kursi.'],
+            ]);
+        }
+
+        return $bySeat;
     }
 
     /**

@@ -155,6 +155,52 @@
       color: var(--score-brand-dark);
       background: rgba(255, 193, 7, 0.18);
     }
+    .history-table .history-poin {
+      width: 4.25rem;
+      max-width: 100%;
+      margin: 0 auto;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      padding: 0.25rem 0.3rem;
+      min-height: 2.1rem;
+    }
+    .history-table .is-winner .history-poin {
+      background: #fffdf3;
+      border-color: #ffc107;
+    }
+    .history-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .reset-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 30, 22, 0.55);
+      backdrop-filter: blur(3px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      z-index: 1080;
+    }
+    .reset-overlay.show {
+      display: flex;
+    }
+    .reset-dialog {
+      background: #fff;
+      border-radius: 1rem;
+      box-shadow: 0 20px 60px rgba(0, 40, 20, 0.25);
+      width: 100%;
+      max-width: 380px;
+      padding: 1.15rem 1.2rem 1.2rem;
+    }
+    .reset-dialog h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--score-brand-dark);
+      margin: 0 0 0.5rem;
+    }
     .winner-toggle {
       display: flex;
       flex-wrap: wrap;
@@ -220,7 +266,7 @@
       <div class="score-card d-none" id="handCard">
         <h2>Ronde baru</h2>
         <div id="scoreInputs"></div>
-        <div class="small text-secondary mb-1">Klik nama pemain untuk menandai pemenang (opsional)</div>
+        <div class="small text-secondary mb-1">Pemenang dipilih otomatis dari skor tertinggi</div>
         <div class="winner-toggle" id="winnerToggle"></div>
         <button type="button" class="btn btn-primary w-100" id="saveHandBtn">
           <i class="bi bi-plus-lg me-1"></i>Simpan ronde
@@ -228,11 +274,16 @@
       </div>
 
       <div class="score-card d-none" id="historyCard">
-        <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
           <h2 class="mb-0">Riwayat ronde</h2>
-          <button type="button" class="btn btn-sm btn-outline-danger d-none" id="voidLastBtn">
-            Batalkan terakhir
-          </button>
+          <div class="history-actions">
+            <button type="button" class="btn btn-sm btn-outline-danger d-none" id="voidLastBtn">
+              Batalkan terakhir
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="resetBtn">
+              Reset
+            </button>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="history-table d-none" id="handTable">
@@ -243,6 +294,22 @@
           </table>
         </div>
         <p class="small text-secondary mb-0 d-none" id="handEmpty">Belum ada ronde.</p>
+        <p class="small text-secondary mb-0 mt-2 d-none" id="handEditHint">Ketuk skor di tabel untuk mengubah ronde yang sudah tersimpan.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="reset-overlay" id="resetOverlay" aria-hidden="true">
+    <div class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+      <h3 id="resetTitle"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset skor</h3>
+      <p class="small text-secondary mb-3">Semua ronde akan dihapus dan total kembali ke 0.</p>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" id="resetPlayersCheck" />
+        <label class="form-check-label" for="resetPlayersCheck">Reset nama pemain juga</label>
+      </div>
+      <div class="d-grid gap-2">
+        <button type="button" class="btn btn-danger" id="resetConfirmBtn">Reset</button>
+        <button type="button" class="btn btn-outline-secondary" id="resetCancelBtn">Batal</button>
       </div>
     </div>
   </div>
@@ -256,6 +323,8 @@
       players: @json(route('guest.mahjong-score.players')),
       storeHand: @json(route('guest.mahjong-score.hands.store')),
       voidLast: @json(route('guest.mahjong-score.hands.void-last')),
+      updateHand: @json(route('guest.mahjong-score.hands.update', ['hand' => 0])),
+      reset: @json(route('guest.mahjong-score.reset')),
     };
     const initialToken = @json($initialToken);
 
@@ -289,7 +358,13 @@
       handTableHead: document.getElementById('handTableHead'),
       handTableBody: document.getElementById('handTableBody'),
       handEmpty: document.getElementById('handEmpty'),
+      handEditHint: document.getElementById('handEditHint'),
       voidLastBtn: document.getElementById('voidLastBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      resetOverlay: document.getElementById('resetOverlay'),
+      resetPlayersCheck: document.getElementById('resetPlayersCheck'),
+      resetConfirmBtn: document.getElementById('resetConfirmBtn'),
+      resetCancelBtn: document.getElementById('resetCancelBtn'),
     };
 
     function clearAlerts() {
@@ -405,6 +480,7 @@
         return '<button type="button" class="btn btn-outline-secondary btn-sm js-winner" data-seat="' + p.seat + '">' +
           escapeHtml(p.nama) + '</button>';
       }).join('');
+      syncWinnerFromHandInputs();
     }
 
     function renderHistory(canWrite) {
@@ -417,16 +493,18 @@
         return;
       }
 
+      if (document.activeElement && document.activeElement.classList.contains('history-poin')) {
+        return;
+      }
+
       els.historyCard.classList.remove('d-none');
       const activeHands = hands.filter(function (h) { return !h.voided; });
       els.voidLastBtn.classList.toggle('d-none', !(canWrite && activeHands.length));
+      els.resetBtn.classList.toggle('d-none', !(canWrite && (hands.length || players.length)));
       els.handEmpty.classList.toggle('d-none', hands.length > 0);
       els.handTable.classList.toggle('d-none', hands.length === 0);
-
-      if (!players.length) {
-        els.handTableHead.innerHTML = '';
-        els.handTableBody.innerHTML = '';
-        return;
+      if (els.handEditHint) {
+        els.handEditHint.classList.toggle('d-none', !(canWrite && hands.length));
       }
 
       els.handTableHead.innerHTML = '<th>Ronde</th>' + players.map(function (p) {
@@ -442,15 +520,28 @@
         (h.scores || []).forEach(function (s) {
           poinBySeat[s.seat] = s.poin;
         });
+        const editable = canWrite && !h.voided;
         const cells = seats.map(function (seat) {
           const poin = poinBySeat[seat];
           const isWinner = h.winner_seat && Number(h.winner_seat) === Number(seat);
+          const display = (poin === null || poin === undefined) ? '' : poin;
+          if (editable) {
+            return '<td class="' + (isWinner ? 'is-winner' : '') + '" data-seat="' + seat + '">' +
+              '<input type="number" inputmode="numeric" class="form-control form-control-sm history-poin" ' +
+              'data-hand-id="' + h.id + '" data-seat="' + seat + '" value="' + display + '" />' +
+              '</td>';
+          }
           return '<td class="' + (isWinner ? 'is-winner' : '') + '">' +
-            (poin === null || poin === undefined ? '-' : poin) +
+            (display === '' ? '-' : display) +
             '</td>';
         }).join('');
         const rondeLabel = h.voided ? (h.hand_no + ' (batal)') : String(h.hand_no);
-        return '<tr class="' + (h.voided ? 'voided' : '') + '"><td>' + escapeHtml(rondeLabel) + '</td>' + cells + '</tr>';
+        const signature = seats.map(function (seat) {
+          const poin = poinBySeat[seat];
+          return seat + ':' + (poin === null || poin === undefined ? '' : poin);
+        }).join('|');
+        return '<tr class="' + (h.voided ? 'voided' : '') + '" data-hand-id="' + h.id + '" data-signature="' + signature + '"><td>' +
+          escapeHtml(rondeLabel) + '</td>' + cells + '</tr>';
       }).join('');
     }
 
@@ -460,6 +551,137 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function parsePoinValue(raw) {
+      const text = String(raw == null ? '' : raw).trim();
+      if (text === '') return 0;
+      const poin = parseInt(text, 10);
+      return Number.isNaN(poin) ? null : poin;
+    }
+
+    function winnerSeatFromScoreMap(bySeat, preferredSeat) {
+      const seats = Object.keys(bySeat);
+      if (!seats.length) return null;
+      let max = null;
+      seats.forEach(function (seat) {
+        const poin = bySeat[seat];
+        if (max === null || poin > max) max = poin;
+      });
+      const leaders = seats.filter(function (seat) {
+        return bySeat[seat] === max;
+      }).map(function (seat) {
+        return parseInt(seat, 10);
+      });
+      if (leaders.length === 1) return leaders[0];
+      if (preferredSeat != null && leaders.indexOf(preferredSeat) !== -1) return preferredSeat;
+      return null;
+    }
+
+    function paintWinnerButtons(selectedSeat) {
+      Array.prototype.forEach.call(els.winnerToggle.querySelectorAll('.js-winner'), function (b) {
+        const isOn = selectedSeat != null && String(b.getAttribute('data-seat')) === String(selectedSeat);
+        b.classList.toggle('btn-success', isOn);
+        b.classList.toggle('btn-outline-secondary', !isOn);
+      });
+    }
+
+    function syncWinnerFromHandInputs() {
+      const inputs = Array.prototype.slice.call(document.querySelectorAll('.hand-poin'));
+      if (!inputs.length) return;
+      const bySeat = {};
+      let invalid = false;
+      inputs.forEach(function (inp) {
+        const poin = parsePoinValue(inp.value);
+        if (poin === null) {
+          invalid = true;
+          return;
+        }
+        bySeat[inp.getAttribute('data-seat')] = poin;
+      });
+      if (invalid) return;
+      winnerSeat = winnerSeatFromScoreMap(bySeat, winnerSeat);
+      paintWinnerButtons(winnerSeat);
+    }
+
+    function collectRowScores(row) {
+      const inputs = Array.prototype.slice.call(row.querySelectorAll('.history-poin'));
+      const scores = [];
+      for (let i = 0; i < inputs.length; i++) {
+        const poin = parsePoinValue(inputs[i].value);
+        if (poin === null) {
+          return { error: 'Poin harus berupa angka.', input: inputs[i] };
+        }
+        scores.push({
+          seat: parseInt(inputs[i].getAttribute('data-seat'), 10),
+          poin: poin,
+        });
+      }
+      return { scores: scores };
+    }
+
+    function applyRowWinner(row, selectedSeat) {
+      Array.prototype.forEach.call(row.querySelectorAll('td[data-seat]'), function (td) {
+        td.classList.toggle('is-winner', selectedSeat != null && String(td.getAttribute('data-seat')) === String(selectedSeat));
+      });
+    }
+
+    function rowSignature(row) {
+      return Array.prototype.map.call(row.querySelectorAll('.history-poin'), function (inp) {
+        return inp.getAttribute('data-seat') + ':' + String(inp.value).trim();
+      }).join('|');
+    }
+
+    function saveHistoryRow(row) {
+      if (!row || row.getAttribute('data-saving') === '1') return;
+      const handId = row.getAttribute('data-hand-id');
+      if (!handId) return;
+      const signature = rowSignature(row);
+      if (signature === (row.getAttribute('data-signature') || '')) return;
+      const collected = collectRowScores(row);
+      if (collected.error) {
+        showError(collected.error);
+        if (collected.input) collected.input.focus();
+        return;
+      }
+      const bySeat = {};
+      collected.scores.forEach(function (s) { bySeat[s.seat] = s.poin; });
+      const autoWinner = winnerSeatFromScoreMap(bySeat, null);
+      applyRowWinner(row, autoWinner);
+      row.setAttribute('data-saving', '1');
+      const body = { scores: collected.scores };
+      if (autoWinner != null) body.winner_seat = autoWinner;
+      api(String(routes.updateHand).replace(/\/0$/, '/' + handId), { method: 'PUT', body: body })
+        .then(function (r) {
+          row.removeAttribute('data-saving');
+          if (!r.ok) {
+            showError(firstError(r.body));
+            return;
+          }
+          state = r.body.data;
+          row.setAttribute('data-signature', signature);
+          showSuccess(r.body.message || 'Ronde diperbarui.');
+          renderTotals();
+          const updated = ((state && state.hands) || []).find(function (h) {
+            return String(h.id) === String(handId);
+          });
+          if (updated) applyRowWinner(row, updated.winner_seat);
+        })
+        .catch(function () {
+          row.removeAttribute('data-saving');
+          showError('Jaringan bermasalah.');
+        });
+    }
+
+    function openResetDialog() {
+      els.resetPlayersCheck.checked = false;
+      els.resetOverlay.classList.add('show');
+      els.resetOverlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeResetDialog() {
+      els.resetOverlay.classList.remove('show');
+      els.resetOverlay.setAttribute('aria-hidden', 'true');
     }
 
     function render() {
@@ -523,17 +745,17 @@
         });
     });
 
+    els.scoreInputs.addEventListener('input', function () {
+      syncWinnerFromHandInputs();
+    });
+
     els.winnerToggle.addEventListener('click', function (e) {
       const btn = e.target.closest('.js-winner');
       if (!btn) return;
       const seatAttr = btn.getAttribute('data-seat');
       const seat = seatAttr === '' || seatAttr == null ? null : parseInt(seatAttr, 10);
       winnerSeat = winnerSeat === seat ? null : seat;
-      Array.prototype.forEach.call(els.winnerToggle.querySelectorAll('.js-winner'), function (b) {
-        const isOn = winnerSeat != null && String(b.getAttribute('data-seat')) === String(winnerSeat);
-        b.classList.toggle('btn-success', isOn);
-        b.classList.toggle('btn-outline-secondary', !isOn);
-      });
+      paintWinnerButtons(winnerSeat);
     });
 
     els.saveHandBtn.addEventListener('click', function () {
@@ -557,6 +779,10 @@
           poin: poin,
         });
       }
+      const bySeat = {};
+      scores.forEach(function (s) { bySeat[s.seat] = s.poin; });
+      winnerSeat = winnerSeatFromScoreMap(bySeat, winnerSeat);
+      paintWinnerButtons(winnerSeat);
       const body = { scores: scores };
       if (winnerSeat != null) body.winner_seat = winnerSeat;
       els.saveHandBtn.disabled = true;
@@ -575,6 +801,66 @@
           els.saveHandBtn.disabled = false;
           showError('Jaringan bermasalah.');
         });
+    });
+
+    els.handTableBody.addEventListener('change', function (e) {
+      const input = e.target.closest('.history-poin');
+      if (!input) return;
+      saveHistoryRow(input.closest('tr'));
+    });
+
+    els.handTableBody.addEventListener('focusout', function (e) {
+      const input = e.target.closest('.history-poin');
+      if (!input) return;
+      const row = input.closest('tr');
+      const next = e.relatedTarget;
+      if (next && row && row.contains(next)) return;
+      saveHistoryRow(row);
+    });
+
+    els.handTableBody.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      const input = e.target.closest('.history-poin');
+      if (!input) return;
+      e.preventDefault();
+      input.blur();
+    });
+
+    els.resetBtn.addEventListener('click', function () {
+      clearAlerts();
+      openResetDialog();
+    });
+
+    els.resetCancelBtn.addEventListener('click', closeResetDialog);
+    els.resetOverlay.addEventListener('click', function (e) {
+      if (e.target === els.resetOverlay) closeResetDialog();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && els.resetOverlay.classList.contains('show')) {
+        closeResetDialog();
+      }
+    });
+
+    els.resetConfirmBtn.addEventListener('click', function () {
+      clearAlerts();
+      els.resetConfirmBtn.disabled = true;
+      api(routes.reset, {
+        method: 'POST',
+        body: { reset_players: !!els.resetPlayersCheck.checked },
+      }).then(function (r) {
+        els.resetConfirmBtn.disabled = false;
+        if (!r.ok) {
+          showError(firstError(r.body));
+          return;
+        }
+        state = r.body.data;
+        closeResetDialog();
+        showSuccess(r.body.message || 'Skor direset.');
+        render();
+      }).catch(function () {
+        els.resetConfirmBtn.disabled = false;
+        showError('Jaringan bermasalah.');
+      });
     });
 
     els.voidLastBtn.addEventListener('click', function () {

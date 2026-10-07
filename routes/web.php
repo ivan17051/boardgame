@@ -124,6 +124,13 @@ Route::prefix('guest')->name('guest.')->group(function () {
     Route::post('/skor/hands/void-last', [GuestRentalMahjongScoreController::class, 'voidLastHand'])
         ->middleware('throttle:30,1')
         ->name('mahjong-score.hands.void-last');
+    Route::put('/skor/hands/{hand}', [GuestRentalMahjongScoreController::class, 'updateHand'])
+        ->whereNumber('hand')
+        ->middleware('throttle:60,1')
+        ->name('mahjong-score.hands.update');
+    Route::post('/skor/reset', [GuestRentalMahjongScoreController::class, 'reset'])
+        ->middleware('throttle:10,1')
+        ->name('mahjong-score.reset');
 });
 
 Route::post('/logout', [LoginController::class, 'destroy'])

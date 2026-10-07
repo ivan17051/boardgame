@@ -97,6 +97,55 @@ class GuestRentalMahjongScoreController extends Controller
         ]);
     }
 
+    public function updateHand(Request $request, int $hand): JsonResponse
+    {
+        $session = $this->sessionOrAbort($request);
+
+        $validated = $request->validate([
+            'scores' => ['required', 'array', 'size:'.RentalMahjongScoring::PLAYER_COUNT],
+            'scores.*.seat' => ['required', 'integer', 'min:1', 'max:'.RentalMahjongScoring::PLAYER_COUNT],
+            'scores.*.poin' => ['nullable', 'integer', 'min:-999999', 'max:999999'],
+            'winner_seat' => ['nullable', 'integer', 'min:1', 'max:'.RentalMahjongScoring::PLAYER_COUNT],
+        ], [
+            'scores.required' => 'Poin wajib diisi.',
+            'scores.size' => 'Harus mengisi poin untuk '.RentalMahjongScoring::PLAYER_COUNT.' pemain.',
+            'scores.*.poin.integer' => 'Poin wajib angka.',
+        ]);
+
+        $session = RentalMahjongScoring::updateHand(
+            $session,
+            $hand,
+            $validated['scores'],
+            array_key_exists('winner_seat', $validated) ? $validated['winner_seat'] : null
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ronde diperbarui.',
+            'data' => RentalMahjongScoring::payload($session),
+        ]);
+    }
+
+    public function reset(Request $request): JsonResponse
+    {
+        $session = $this->sessionOrAbort($request);
+
+        $validated = $request->validate([
+            'reset_players' => ['nullable', 'boolean'],
+        ]);
+
+        $resetPlayers = ! empty($validated['reset_players']);
+        $session = RentalMahjongScoring::resetSession($session, $resetPlayers);
+
+        return response()->json([
+            'success' => true,
+            'message' => $resetPlayers
+                ? 'Skor dan nama pemain direset.'
+                : 'Semua skor direset.',
+            'data' => RentalMahjongScoring::payload($session),
+        ]);
+    }
+
     private function sessionOrAbort(Request $request)
     {
         $token = $this->tokenFromRequest($request);
