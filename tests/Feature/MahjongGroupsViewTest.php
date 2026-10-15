@@ -97,4 +97,29 @@ class MahjongGroupsViewTest extends TestCase
         $this->assertStringContainsString('Grup Lama', $html);
         $this->assertStringContainsString('Babak 1', $html);
     }
+
+    public function test_input_poin_auto_selects_highest_score_winner_but_allows_manual_pick(): void
+    {
+        $html = view('public.mahjong-groups', [
+            'tournament' => [
+                'id' => 9,
+                'nama' => 'Mahjong Cup',
+                'jenis' => 'mahjong',
+                'status' => 'ongoing',
+            ],
+            'idKategori' => null,
+            'groups' => [],
+            'groupHistory' => [],
+            'groupHistoryKind' => 'babak',
+            'groupsError' => null,
+            'canInputScores' => true,
+            'scoreStoreUrl' => '/turnamen/mahjong/9/poin',
+        ])->render();
+
+        $this->assertStringContainsString('winnerLockedManual', $html);
+        $this->assertStringContainsString('uniqueHighestMemberId', $html);
+        $this->assertStringContainsString('Isi poin keempat pemain.', $html);
+        $this->assertStringNotContainsString('Pemenang dipilih otomatis dari skor tertinggi', $html);
+        $this->assertStringNotContainsString('klik nama untuk memilih manual', $html);
+    }
 }

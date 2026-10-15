@@ -285,7 +285,7 @@
         <div class="score-dialog-header">
           <div>
             <h3 id="scoreModalTitle"><i class="bi bi-pencil-square me-1"></i>Input Poin</h3>
-            <p id="scoreModalSubtitle">Isi poin keempat pemain. Menandai pemenang ronde bersifat opsional.</p>
+            <p id="scoreModalSubtitle">Isi poin keempat pemain.</p>
           </div>
           <button type="button" class="score-close" id="scoreModalClose" aria-label="Tutup">
             <i class="bi bi-x-lg"></i>
@@ -316,6 +316,7 @@
 
     let selectedGroupId = null;
     let selectedWinnerMemberId = null;
+    let winnerLockedManual = false;
 
     const escapeHtml = (value) =>
       String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -359,15 +360,45 @@
       });
     };
 
+    const uniqueHighestMemberId = () => {
+      const scored = [];
+      content.querySelectorAll('.js-score-poin').forEach((input) => {
+        const raw = String(input.value ?? '').trim();
+        if (raw === '') return;
+        const poin = parseInt(raw, 10);
+        if (Number.isNaN(poin)) return;
+        scored.push({
+          id: String(input.dataset.memberId || ''),
+          poin,
+        });
+      });
+
+      if (! scored.length) {
+        return null;
+      }
+
+      const max = Math.max.apply(null, scored.map((row) => row.poin));
+      const leaders = scored.filter((row) => row.poin === max && row.id !== '');
+      return leaders.length === 1 ? leaders[0].id : null;
+    };
+
+    const syncWinnerFromScores = () => {
+      if (winnerLockedManual) {
+        return;
+      }
+      setWinnerSelection(uniqueHighestMemberId());
+    };
+
     const renderFields = (grupName, babak, members) => {
       selectedWinnerMemberId = null;
+      winnerLockedManual = false;
       const playerRows = members.map((member) => `
         <div class="score-player-row">
           <button type="button"
                   class="score-player-name js-winner-pick"
                   data-member-id="${escapeHtml(member.id)}"
                   aria-pressed="false"
-                  title="Tandai sebagai pemenang ronde (opsional)">
+                  title="Tandai sebagai pemenang ronde">
             <i class="bi bi-trophy score-winner-icon me-1"></i>
             ${escapeHtml(member.nama || 'Pemain')}
           </button>
@@ -393,13 +424,17 @@
       `;
 
       subtitle.textContent = grupName
-        ? `Isi poin di ${grupName}${babak ? ' — Babak ' + babak : ''}. Pemenang ronde opsional.`
-        : 'Isi poin keempat pemain. Menandai pemenang ronde bersifat opsional.';
+        ? `Isi poin di ${grupName}${babak ? ' — Babak ' + babak : ''}.`
+        : 'Isi poin keempat pemain.';
 
       const form = document.getElementById('scoreHandForm');
       if (form) {
         form.addEventListener('submit', submitScores);
       }
+
+      content.querySelectorAll('.js-score-poin').forEach((input) => {
+        input.addEventListener('input', syncWinnerFromScores);
+      });
 
       const firstInput = content.querySelector('.js-score-poin');
       if (firstInput) {
@@ -500,8 +535,17 @@
       const pickBtn = event.target.closest('.js-winner-pick');
       if (pickBtn && content.contains(pickBtn)) {
         event.preventDefault();
-        const memberId = pickBtn.dataset.memberId;
-        setWinnerSelection(selectedWinnerMemberId === String(memberId) ? null : memberId);
+        const memberId = String(pickBtn.dataset.memberId || '');
+        if (! memberId) {
+          return;
+        }
+        if (winnerLockedManual && selectedWinnerMemberId === memberId) {
+          winnerLockedManual = false;
+          syncWinnerFromScores();
+          return;
+        }
+        winnerLockedManual = true;
+        setWinnerSelection(memberId);
       }
     });
 
