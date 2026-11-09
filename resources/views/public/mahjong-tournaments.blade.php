@@ -23,6 +23,7 @@
 
 @push('styles')
 <style>
+  @include('partials.mahjong-guide-styles')
   .page-header {
     text-align: center;
     margin-bottom: 1.75rem;
@@ -230,6 +231,16 @@
     <p>Daftar turnamen mahjong terbaru</p>
   </header>
 
+  <div class="score-tabs" role="tablist" aria-label="Halaman Mahjong">
+    <button type="button" class="score-tab active" id="tournamentsTab" role="tab" aria-selected="true" aria-controls="tournamentsPanel" tabindex="0">
+      <i class="bi bi-trophy-fill me-1" aria-hidden="true"></i>Turnamen
+    </button>
+    <button type="button" class="score-tab" id="landingGuideTab" role="tab" aria-selected="false" aria-controls="landingGuidePanel" tabindex="-1">
+      <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Panduan
+    </button>
+  </div>
+
+  <section id="tournamentsPanel" role="tabpanel" aria-labelledby="tournamentsTab" tabindex="0">
   @if (session('success'))
     <div class="alert alert-success text-center">{{ session('success') }}</div>
   @endif
@@ -400,6 +411,12 @@
     </div>
   @endif
 
+  </section>
+
+  <section id="landingGuidePanel" role="tabpanel" aria-labelledby="landingGuideTab" tabindex="0" hidden>
+    @include('partials.mahjong-guide')
+  </section>
+
   <div class="juara-overlay" id="juaraOverlay" aria-hidden="true">
     <div class="juara-dialog" role="dialog" aria-modal="true" aria-labelledby="juaraTitle">
       <div class="juara-dialog-header">
@@ -418,6 +435,7 @@
 
 @push('scripts')
 <script>
+  @include('partials.mahjong-tabs-script')
   (function () {
     async function copyShareUrl(url) {
       if (navigator.clipboard && window.isSecureContext) {
