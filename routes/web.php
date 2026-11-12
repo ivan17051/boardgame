@@ -40,8 +40,8 @@ Route::post('/login', [LoginController::class, 'store'])
     ->middleware('throttle:10,1')
     ->name('login.store');
 
-Route::get('/', [PublicMahjongTournamentController::class, 'index'])
-    ->name('home');
+Route::view('/', 'public.home')->name('home');
+Route::redirect('/panduan/mahjong', '/turnamen/mahjong?tab=panduan')->name('public.mahjong-guide');
 Route::get('/turnamen/mahjong', [PublicMahjongTournamentController::class, 'index'])
     ->name('public.mahjong-tournaments');
 Route::get('/turnamen/mahjong/{id}/daftar', [PublicMahjongTournamentController::class, 'showRegister'])

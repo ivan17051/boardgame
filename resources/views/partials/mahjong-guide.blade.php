@@ -1,6 +1,245 @@
+      <div class="score-card guide-card mb-3">
+        <h2>Komponen Mahjong</h2>
+        <p class="small text-secondary">Kenali tiga jenis ubin angka serta ubin royal (angin dan naga) berikut. Geser ilustrasi ke samping pada layar kecil.</p>
+        <div class="guide-example">
+          <h3>Bulat (Tongzi)</h3>
+          <p class="example-caption">Ubin bergambar lingkaran, bernomor 1 sampai 9.</p>
+          <div class="guide-winning-hand" role="group" aria-label="Ilustrasi Bulat (Tongzi)">
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin1.png') }}" alt="1 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>1</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin2.png') }}" alt="2 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>2</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin3.png') }}" alt="3 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>3</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin4.png') }}" alt="4 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>4</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin5.png') }}" alt="5 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>5</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin6.png') }}" alt="6 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>6</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin7.png') }}" alt="7 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>7</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin8.png') }}" alt="8 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>8</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pin9.png') }}" alt="9 lingkaran" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>9</small>
+            </div>
+          </div>
+        </div>
+        <div class="guide-example">
+          <h3>Karakter (Wanzi)</h3>
+          <p class="example-caption">Ubin bertuliskan karakter, bernomor 1 sampai 9.</p>
+          <div class="guide-winning-hand" role="group" aria-label="Ilustrasi Karakter (Wanzi)">
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man1.png') }}" alt="1 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>1</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man2.png') }}" alt="2 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>2</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man3.png') }}" alt="3 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>3</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man4.png') }}" alt="4 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>4</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man5.png') }}" alt="5 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>5</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man6.png') }}" alt="6 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>6</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man7.png') }}" alt="7 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>7</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man8.png') }}" alt="8 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>8</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Man9.png') }}" alt="9 karakter" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>9</small>
+            </div>
+          </div>
+        </div>
+        <div class="guide-example">
+          <h3>Bambu (Suozi)</h3>
+          <p class="example-caption">Ubin bergambar bambu, bernomor 1 sampai 9. Ubin 1 bambu bergambar burung.</p>
+          <div class="guide-winning-hand" role="group" aria-label="Ilustrasi Bambu (Suozi)">
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou1.png') }}" alt="1 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>1</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou2.png') }}" alt="2 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>2</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou3.png') }}" alt="3 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>3</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou4.png') }}" alt="4 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>4</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou5.png') }}" alt="5 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>5</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou6.png') }}" alt="6 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>6</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou7.png') }}" alt="7 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>7</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou8.png') }}" alt="8 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>8</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Sou9.png') }}" alt="9 bambu" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>9</small>
+            </div>
+          </div>
+        </div>
+        <div class="guide-example">
+          <h3>Royal - Angin</h3>
+          <p class="example-caption">Empat arah angin: Timur (Dong), Selatan (Nan), Barat (Xi), dan Utara (Bei).</p>
+          <div class="guide-winning-hand" role="group" aria-label="Ilustrasi Royal - Angin">
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Ton.png') }}" alt="Angin Timur" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Timur</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Nan.png') }}" alt="Angin Selatan" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Selatan</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Shaa.png') }}" alt="Angin Barat" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Barat</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Pei.png') }}" alt="Angin Utara" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Utara</small>
+            </div>
+          </div>
+        </div>
+        <div class="guide-example">
+          <h3>Royal - Naga</h3>
+          <p class="example-caption">Tiga naga: merah (Hong Zhong), hijau (Fa Cai), dan putih (Bai Ban).</p>
+          <div class="guide-winning-hand" role="group" aria-label="Ilustrasi Royal - Naga">
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Chun.png') }}" alt="Naga merah" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Merah</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Hatsu.png') }}" alt="Naga hijau" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Hijau</small>
+            </div>
+            <div class="guide-hand-group">
+              <div class="guide-tiles">
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+              </div>
+              <small>Putih</small>
+            </div>
+          </div>
+        </div>
+        
+      </div>
       <div class="score-card guide-card">
-        <h2>Panduan Mahjong</h2>
-        <p class="small text-secondary">Ringkasan aturan turnamen Mahjong.</p>
+        <h2>Omahjong House Rules</h2>
+        <p class="small text-secondary">Ringkasan aturan Mahjong versi Omahjong.</p>
 
         <h3>Cara bermain</h3>
         <ul>
@@ -175,18 +414,17 @@
           <li>Kecurangan yang disengaja dapat menyebabkan diskualifikasi.</li>
         </ul>
 
-        <p class="small text-secondary mb-3">Ilustrasi ubin: <a href="https://github.com/FluffyStuff/riichi-mahjong-tiles" target="_blank" rel="noopener noreferrer">FluffyStuff</a>.</p>
+        
         <!-- <div class="guide-note">
           <strong>Catatan Chombo:</strong> dokumen menyebut dua ketentuan berbeda untuk klaim menang yang salah: penalti 10 poin kepada setiap lawan pada bagian pelanggaran, serta 30 poin dibagi di antara pemain lain pada bagian etiket. Konfirmasikan penerapan yang berlaku kepada panitia.
         </div>
         <p class="small text-secondary mt-3 mb-0">Aturan ini menggunakan House Rule Threefrogs dengan referensi Riichi yang disederhanakan. Hal yang belum diatur mengikuti Bamboo Tournament atau World Riichi Rules; keputusan penyelenggara bersifat final.</p> -->
       </div>
       <div class="score-card guide-card mt-3">
-        <h2>Kombinasi Mahjong: Belajar Mahjong</h2>
-        <p class="small text-secondary">Referensi: MahjongGuide.pdf dari Toko Mahjong / PONG Mahjong Parlor Surabaya. Nilai poin di bagian ini mengikuti PDF dan berbeda dari sistem turnamen di atas.</p>
+        <h2>Kombinasi Mahjong</h2>
         <p class="small text-secondary">Setiap ilustrasi memperlihatkan contoh tangan lengkap. Royal berarti angin dan naga; terminal berarti angka 1 dan 9. Geser ilustrasi ke samping pada layar kecil.</p>
         <div class="guide-example">
-          <h3>Set Mulia <small>(300 poin)</small></h3>
+          <h3>Set Mulia <small>(1 poin)</small></h3>
           <p class="example-caption">Memiliki triplet atau quad naga, atau angin sesuai tempat duduk. Contoh berikut memakai pong naga merah.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Set Mulia">
             <div class="guide-hand-group">
@@ -231,7 +469,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Urutan Berantai <small>(300 poin)</small></h3>
+          <h3>Urutan Berantai <small>(1 poin)</small></h3>
           <p class="example-caption">Dua urutan sejenis dengan angka akhir set pertama menjadi angka awal set berikutnya, misalnya 123 dan 345. Satu set hanya boleh dipakai dalam satu urutan berantai.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Urutan Berantai">
             <div class="guide-hand-group">
@@ -276,7 +514,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Ujung Separuh <small>(600 poin)</small></h3>
+          <h3>Ujung Separuh <small>(3 poin)</small></h3>
           <p class="example-caption">Setiap set dan pasangan mengandung terminal (1 atau 9) atau royal (angin atau naga). Minimal satu set berupa urutan.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Ujung Separuh">
             <div class="guide-hand-group">
@@ -321,7 +559,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Triplet Murni <small>(1.200 poin)</small></h3>
+          <h3>Triplet Murni <small>(6 poin)</small></h3>
           <p class="example-caption">Semua set berupa triplet atau quad, ditambah satu pasangan.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Triplet Murni">
             <div class="guide-hand-group">
@@ -367,7 +605,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Lima Serangkai <small>(1.200 poin)</small></h3>
+          <h3>Lima Serangkai <small>(6 poin)</small></h3>
           <p class="example-caption">Mengandung kelima kelompok ubin: bambu, bulat, karakter, naga, dan angin.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Lima Serangkai">
             <div class="guide-hand-group">
@@ -412,7 +650,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Serupa Separuh <small>(1.200 poin)</small></h3>
+          <h3>Serupa Separuh <small>(6 poin)</small></h3>
           <p class="example-caption">Hanya satu jenis ubin angka dan ubin royal.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Serupa Separuh">
             <div class="guide-hand-group">
@@ -457,7 +695,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Urutan Mirip <small>(1.200 poin)</small></h3>
+          <h3>Urutan Mirip <small>(6 poin)</small></h3>
           <p class="example-caption">Tiga urutan dengan angka yang sama pada ketiga jenis ubin, misalnya 234 karakter, bulat, dan bambu.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Urutan Mirip">
             <div class="guide-hand-group">
@@ -502,7 +740,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Urutan Lengkap Murni <small>(1.200 poin)</small></h3>
+          <h3>Urutan Lengkap Murni <small>(6 poin)</small></h3>
           <p class="example-caption">Memiliki urutan 123, 456, dan 789 dalam satu jenis ubin.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Urutan Lengkap Murni">
             <div class="guide-hand-group">
@@ -547,7 +785,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Komodo (Naga Kecil) <small>(2.400 poin)</small></h3>
+          <h3>Komodo (Naga Kecil) <small>(7 poin)</small></h3>
           <p class="example-caption">Dua triplet atau quad naga dan satu pasangan naga.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Komodo (Naga Kecil)">
             <div class="guide-hand-group">
@@ -592,7 +830,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Ujung Murni <small>(2.400 poin)</small></h3>
+          <h3>Ujung Murni <small>(7 poin)</small></h3>
           <p class="example-caption">Setiap set dan pasangan mengandung terminal (1 atau 9), tanpa royal.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Ujung Murni">
             <div class="guide-hand-group">
@@ -637,7 +875,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Tujuh Keajaiban <small>(3.900 poin)</small></h3>
+          <h3>Tujuh Keajaiban <small>(7 poin)</small></h3>
           <p class="example-caption">Tujuh pasangan berbeda. Tidak boleh ada quad dalam komposisi ini.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Tujuh Keajaiban">
             <div class="guide-hand-group">
@@ -692,7 +930,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Serupa Murni (Satu Warna) <small>(5.400 poin)</small></h3>
+          <h3>Serupa Murni (Satu Warna) <small>(13 poin)</small></h3>
           <p class="example-caption">Seluruh tangan hanya terdiri dari satu jenis ubin angka, tanpa royal.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Serupa Murni (Satu Warna)">
             <div class="guide-hand-group">
@@ -737,7 +975,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Nantaboga (3 Naga Besar) <small>(12.000 poin)</small></h3>
+          <h3>Nantaboga (3 Naga Besar) <small>(25 poin)</small></h3>
           <p class="example-caption">Memiliki triplet atau quad ketiga naga.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Nantaboga (3 Naga Besar)">
             <div class="guide-hand-group">
@@ -782,7 +1020,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Topan (4 Angin Besar/Kecil) <small>(12.000 poin)</small></h3>
+          <h3>Topan (4 Angin Besar/Kecil) <small>(25 poin)</small></h3>
           <p class="example-caption">Empat triplet atau quad angin (besar), atau tiga triplet atau quad angin dan satu pasangan angin (kecil).</p>
           <h4>Empat Angin Besar</h4>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Empat Angin Besar">
@@ -870,7 +1108,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Royal Murni <small>(12.000 poin)</small></h3>
+          <h3>Royal Murni <small>(25 poin)</small></h3>
           <p class="example-caption">Seluruh tangan hanya terdiri dari ubin angin dan naga.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Royal Murni">
             <div class="guide-hand-group">
@@ -915,7 +1153,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Terminal Murni <small>(12.000 poin)</small></h3>
+          <h3>Terminal Murni <small>(25 poin)</small></h3>
           <p class="example-caption">Seluruh tangan hanya terdiri dari ubin angka 1 dan 9.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Terminal Murni">
             <div class="guide-hand-group">
@@ -960,7 +1198,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>Quad Murni <small>(12.000 poin)</small></h3>
+          <h3>Quad Murni <small>(25 poin)</small></h3>
           <p class="example-caption">Memiliki empat quad dan satu pasangan. Tangan berisi 18 ubin karena setiap kong memakai satu ubin tambahan.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Quad Murni">
             <div class="guide-hand-group">
@@ -1009,7 +1247,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>13 Rakyat <small>(12.000 poin)</small></h3>
+          <h3>13 Rakyat <small>(25 poin)</small></h3>
           <p class="example-caption">Memiliki angka 1 dan 9 dari ketiga jenis, ketiga naga, dan keempat angin, dengan satu ubin sebagai pasangan. Pola ini tidak memakai susunan 4 set biasa.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh 13 Rakyat">
             <div class="guide-hand-group">
@@ -1059,7 +1297,7 @@
           </div>
         </div>
         <div class="guide-example">
-          <h3>7 Tangga Surga <small>(12.000 poin)</small></h3>
+          <h3>7 Tangga Surga <small>(25 poin)</small></h3>
           <p class="example-caption">Tujuh pasangan berurutan dalam satu jenis ubin.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh 7 Tangga Surga">
             <div class="guide-hand-group">

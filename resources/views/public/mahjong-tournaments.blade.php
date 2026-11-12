@@ -226,21 +226,24 @@
 @endpush
 
 @section('content')
+  @php
+    $showGuide = request()->query('tab') === 'panduan';
+  @endphp
   <header class="page-header">
     <h1><i class="bi bi-trophy-fill me-2"></i>Turnamen Mahjong</h1>
     <p>Daftar turnamen mahjong terbaru</p>
   </header>
 
   <div class="score-tabs" role="tablist" aria-label="Halaman Mahjong">
-    <button type="button" class="score-tab active" id="tournamentsTab" role="tab" aria-selected="true" aria-controls="tournamentsPanel" tabindex="0">
+    <button type="button" class="score-tab {{ $showGuide ? '' : 'active' }}" id="tournamentsTab" role="tab" aria-selected="{{ $showGuide ? 'false' : 'true' }}" aria-controls="tournamentsPanel" tabindex="{{ $showGuide ? -1 : 0 }}">
       <i class="bi bi-trophy-fill me-1" aria-hidden="true"></i>Turnamen
     </button>
-    <button type="button" class="score-tab" id="landingGuideTab" role="tab" aria-selected="false" aria-controls="landingGuidePanel" tabindex="-1">
+    <button type="button" class="score-tab {{ $showGuide ? 'active' : '' }}" id="landingGuideTab" role="tab" aria-selected="{{ $showGuide ? 'true' : 'false' }}" aria-controls="landingGuidePanel" tabindex="{{ $showGuide ? 0 : -1 }}">
       <i class="bi bi-journal-text me-1" aria-hidden="true"></i>Panduan
     </button>
   </div>
 
-  <section id="tournamentsPanel" role="tabpanel" aria-labelledby="tournamentsTab" tabindex="0">
+  <section id="tournamentsPanel" role="tabpanel" aria-labelledby="tournamentsTab" tabindex="0" @if($showGuide) hidden @endif>
   @if (session('success'))
     <div class="alert alert-success text-center">{{ session('success') }}</div>
   @endif
@@ -256,7 +259,7 @@
     @endphp
     @foreach ($filters as $value => $label)
       <a
-        href="{{ $value ? route('home', ['status' => $value]) : route('home') }}"
+        href="{{ $value ? route('public.mahjong-tournaments', ['status' => $value]) : route('public.mahjong-tournaments') }}"
         class="btn btn-sm {{ ($statusFilter ?? null) === $value ? 'btn-primary active' : 'btn-outline-secondary' }}"
       >{{ $label }}</a>
     @endforeach
@@ -413,7 +416,7 @@
 
   </section>
 
-  <section id="landingGuidePanel" role="tabpanel" aria-labelledby="landingGuideTab" tabindex="0" hidden>
+  <section id="landingGuidePanel" role="tabpanel" aria-labelledby="landingGuideTab" tabindex="0" @if(!$showGuide) hidden @endif>
     @include('partials.mahjong-guide')
   </section>
 
