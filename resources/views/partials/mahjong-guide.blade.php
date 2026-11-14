@@ -229,7 +229,7 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Putih</small>
             </div>
@@ -282,8 +282,8 @@
           <div class="guide-meld">
             <span class="guide-meld-label">Pasangan</span>
             <div class="guide-tiles" role="img" aria-label="Dua ubin naga putih">
-              <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-              <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+              <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+              <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
             </div>
           </div>
         </div>
@@ -361,7 +361,7 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" aria-hidden="true">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" /><img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" /><img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan +1</small>
             </div>
@@ -464,8 +464,8 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan</small>
             </div>
@@ -509,8 +509,8 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan</small>
             </div>
@@ -735,8 +735,8 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan</small>
             </div>
@@ -780,8 +780,8 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan</small>
             </div>
@@ -825,8 +825,8 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pasangan</small>
             </div>
@@ -999,9 +999,9 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pong</small>
             </div>
@@ -1124,9 +1124,9 @@
             </div>
             <div class="guide-hand-group">
               <div class="guide-tiles" role="img" aria-label="Naga putih, Naga putih, Naga putih">
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Pong</small>
             </div>
@@ -1278,7 +1278,7 @@
               <div class="guide-tiles" role="img" aria-label="Naga merah, Naga hijau, Naga putih">
                 <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Chun.png') }}" alt="Naga merah" width="300" height="400" loading="lazy" decoding="async" />
                 <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Hatsu.png') }}" alt="Naga hijau" width="300" height="400" loading="lazy" decoding="async" />
-                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
+                <img class="guide-tile" src="{{ asset('public/assets/img/mahjong/Haku-ornate.png') }}" alt="Naga putih" width="300" height="400" loading="lazy" decoding="async" />
               </div>
               <small>Ubin wajib</small>
             </div>
