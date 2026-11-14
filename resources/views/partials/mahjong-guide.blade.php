@@ -311,7 +311,10 @@
             </thead>
             <tbody>
               <tr><td>All Simples</td><td>+1</td><td>Tidak ada terminal atau honor.</td></tr>
-              <tr><td>Closed Hand</td><td>+2</td><td>Menang tanpa memanggil ubin dari lawan.</td></tr>
+              <tr><td>Right Winds</td><td>+1</td><td>Memiliki set triplet/quad angin sesuai tempat duduk.</td></tr>
+              <tr><td>Right Flower</td><td>+1</td><td>Memiliki urutan bunga sesuai nomor tempat duduk.</td></tr>
+              <tr><td>No Flower</td><td>+1</td><td>Tidak memiliki bunga sama sekali.</td></tr>
+              <tr><td>Closed Hand</td><td>+2</td><td>Menang tanpa memakan ubin (pong/chii) dari lawan.</td></tr>
               <tr><td>All Sequence</td><td>+2</td><td>Empat urutan dan satu pasangan; tanpa honor atau triplet.</td></tr>
               <tr><td>All Triplets</td><td>+6</td><td>Empat triplet dan satu pasangan.</td></tr>
               <tr><td>Half-Flush</td><td>+6</td><td>Satu jenis ubin angka dan ubin honor.</td></tr>
@@ -423,7 +426,7 @@
       <div class="score-card guide-card mt-3">
         <h2>Kombinasi Mahjong</h2>
         <p class="small text-secondary">Setiap ilustrasi memperlihatkan contoh tangan lengkap. Royal berarti angin dan naga; terminal berarti angka 1 dan 9. Geser ilustrasi ke samping pada layar kecil.</p>
-        <div class="guide-example">
+        <!-- <div class="guide-example">
           <h3>Set Mulia <small>(1 poin)</small></h3>
           <p class="example-caption">Memiliki triplet atau quad naga, atau angin sesuai tempat duduk. Contoh berikut memakai pong naga merah.</p>
           <div class="guide-winning-hand" role="group" aria-label="Contoh Set Mulia">
@@ -467,7 +470,7 @@
               <small>Pasangan</small>
             </div>
           </div>
-        </div>
+        </div> -->
         <div class="guide-example">
           <h3>Urutan Berantai <small>(1 poin)</small></h3>
           <p class="example-caption">Dua urutan sejenis dengan angka akhir set pertama menjadi angka awal set berikutnya, misalnya 123 dan 345. Satu set hanya boleh dipakai dalam satu urutan berantai.</p>
